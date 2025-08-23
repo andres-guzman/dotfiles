@@ -1,0 +1,153 @@
+
+// Global Properties //
+* {
+    font:                         "JetBrainsMono Nerd Font Propo Bold 8";
+    background:                  rgba(20, 5, 59, 0.85);
+    background-alt:              rgba(49, 11, 145, 0.65);
+    foreground:                  rgba(215, 219, 236, 1);
+    error:                       rgba(255, 71, 148, 1);
+    border:rgb(133, 106, 255);
+    
+}
+
+
+configuration {
+    show-icons:                  true;
+    drun-display-format:         "{name}";
+    window-format:               "{w}{t}";
+    icon-theme:                  "Tela-circle-dracula";
+}
+
+
+// Main //
+window {
+    enabled:                     true;
+    width:                       1000px;
+    height:                      500px;
+    transparency:                "real";
+    fullscreen:                  false;
+    cursor:                      "default";
+    spacing:                     0px;
+    padding:                     12px;
+    border:                      2px;
+    background-color:            @background;
+    border-color:                @border;
+    border-radius:               12px;
+    // background-image:            url("/home/andres/.config/hyde/themes/Catppuccin Mocha/wallpapers/black-rocks-5120x2880-13128.jpg", height);
+}
+
+
+// Mainbox //
+mainbox {
+    enabled:                     true;
+    spacing:                     0px;
+    padding:                     0px;
+    orientation:                 vertical;
+    children:                    ["inputbar", "listbox"];
+    background-color:            transparent;
+}
+
+
+// Input bar //
+inputbar {
+    enabled:                     true;
+    spacing:                     0px;
+    padding:                     40px;
+    children:                    ["entry"];
+    background-color:            transparent;
+    
+}
+
+
+// Input bar entry //
+entry {
+    enabled:                     true;
+    spacing:                     0px;
+    padding:                     14px;
+    text-color:                  @foreground;
+    background-color:            @background-alt;
+    cursor:                      text;
+    border-radius:               10px;
+    
+}
+
+
+// List of applications //
+listbox {
+    padding:                     40px;
+    spacing:                     0px;
+    orientation:                 horizontal;
+    children:                    ["listview"];
+    background-color:            transparent;
+    
+}
+
+
+// List view //
+listview {
+    enabled:                     true;
+    padding:                     0px;
+    spacing:                     10px;
+    columns:                     4;
+    lines:                       1;
+    cycle:                       false;
+    dynamic:                     false;
+    scrollbar:                   false;
+    reverse:                     false;
+    fixed-height:                false;
+    fixed-columns:               false;
+    layout:                      vertical;
+    cursor:                      "default";
+    background-color:            transparent;
+}
+
+
+// Elements //
+element {
+    enabled:                     true;
+    spacing:                     16px;
+    padding:                     8px;
+    cursor:                      pointer;
+    text-color:                  @foreground;
+    background-color:            transparent;
+    border-radius:               10px;
+}
+
+
+element selected.normal {
+    background-color:            @background-alt;
+    text-color:                  @foreground;
+}
+
+
+element-icon {
+    size:                        28px;
+    cursor:                      inherit;
+    background-color:            transparent;
+    text-color:                  inherit;
+}
+
+
+element-text {
+    vertical-align:              0.5;
+    horizontal-align:            0.0;
+    cursor:                      inherit;
+    background-color:            transparent;
+    text-color:                  inherit;
+}
+
+
+// Error message //
+error-message {
+    text-color:                  @foreground;
+    background-color:            transparent;
+    children:                    [ "textbox" ];
+}
+
+
+textbox {
+    text-color:                  inherit;
+    background-color:            inherit;
+    vertical-align:              0.5;
+    horizontal-align:            0.5;
+}

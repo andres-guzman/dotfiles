@@ -1,0 +1,259 @@
+[
+  {
+    // Monitor 1
+    "name": "waybar-1",
+    "output": "DP-1",
+    "layer": "top",
+    "position": "top",
+    "exclusive": true,
+    "passthrough": false,
+    "gtk-layer-shell": true,
+    "reload_style_on_change": true,
+    "exclusive-zone": 0,
+    "modules-left": [
+      "custom/updates",
+      "custom/weather",
+      "mpris",
+      "custom/cava"
+    ],
+    "modules-center": ["hyprland/workspaces"],
+    "modules-right": [
+      "network#download",
+      "network#upload",
+      // "network",
+      // "custom/net-speed",
+      // "custom/padd",
+      // "cpu",
+      // "custom/padd",
+      // "custom/gpuinfo#amd",
+      "custom/padd",
+      "memory",
+      "custom/padd",
+      "pulseaudio",
+      "pulseaudio#microphone",
+      "custom/padd",
+      "idle_inhibitor",
+      "custom/padd",
+      "custom/power"
+    ],
+    // Modules for Monitor 1
+    // Workspaces
+    "hyprland/workspaces": {
+      "all-outputs": false,
+      "active-only": false,
+      "format": "{icon}",
+      "show-special": false,
+      "on-click": "hyprctl dispatch workspace {id},DP-1",
+      "disable-scroll": true,
+      "rotate": 0,
+      "persistent-workspaces": {
+        "1": [],
+        "2": [],
+        "3": [],
+        "4": [],
+        "5": [],
+        "6": [],
+        "7": [],
+        "8": [],
+        "9": [],
+        "10": [],
+        "11": [],
+        "12": [],
+        "13": []
+      },
+      "format-icons": {
+        "1": "0",
+        "2": "1",
+        "3": "2",
+        "4": "3",
+        "5": "4",
+        "6": "5",
+        "7": "6",
+        "8": "7",
+        "9": "8",
+        "10": "9",
+        "11": "",
+        "12": "",
+        "13": ""
+      }
+    },
+    // Custom modules
+    "custom/updates": {
+      "exec": "systemupdate.sh",
+      "return-type": "json",
+      "format": "{}",
+      "rotate": 0,
+      "on-click": "hyprctl dispatch exec 'systemupdate.sh up'",
+      "interval": 3600, // once every hour
+      "tooltip": true,
+      "signal": 20
+    },
+    "custom/weather": {
+      "exec": "weather_timezone.py",
+      "format": "{}",
+      "tooltip": true,
+      "return-type": "json",
+      "interval": 60, // once every 60 seconds
+      "on-click": "weather_timezone.py next",
+      "on-click-right": "xdg-open https://openweathermap.org/city/3911925"
+    },
+    "mpris": {
+      "tooltip": false,
+      "format": "   <span color='#cdd6f466'></span>   {player_icon}  {dynamic}  {position}",
+      "format-paused": "   <span color='#cdd6f466'></span>   {status_icon}  {dynamic}  {position}",
+      "dynamic-order": ["artist", "title"],
+      "dynamic-importance-order": ["artist", "title"],
+      "player-icons": {
+        "default": ""
+      },
+      "status-icons": {
+        "paused": ""
+      },
+      "max-length": 86,
+      "interval": 1
+    },
+    "custom/cava": {
+      "format": "   {}",
+      "exec": "cava.sh waybar",
+      "restart-interval": 1,
+      "hide-empty": false,
+      "tooltip": false
+    },
+    // "network": {
+    //   "interface": "enp6s0",
+    //   "tooltip": true,
+    //   "rotate": 0,
+    //   "format-ethernet": "{bandwidthDownBytes}       {bandwidthUpBytes}",
+    //   "format-alt": "<span color='#8066E8'>Ethernet</span> {bandwidthDownBytes}       {bandwidthUpBytes",
+    //   "format-linked": "󰈀 {ifname} (No IP)",
+    //   "format-wifi": "  {essid} <span color='#CDD6F4'>DOWN</span> {bandwidthDownBytes} <span color='#b29aff66'> | </span> <span color='#CDD6F4'>UP</span> {bandwidthUpBytes}",
+    //   "tooltip-format-wifi": "<b>Wifi Name:</b> {essid}\n<b>IP Address:</b> {ipaddr} / {cidr}\n<b>Signal strength:</b> {signaldBm}dBm ({signalStrength}%)\n<b>Frequency: </b>{frequency}MHz\nInterface: <b>{ifname}</b>\n<b>Gateway: </b>{gwaddr}\n<b>Netmask: </b>{netmask}",
+    //   "tooltip-format-ethernet": "<b>IP Address:</b> {ipaddr} / {cidr}\n<b>Interface:</b> {ifname}\n<b>Gateway:</b> {gwaddr}\n<b>Netmask:</b> {netmask}",
+    //   "format-disconnected": "<span color='#8066E8'>Network Disconnected</span>",
+    //   "tooltip-format-disconnected": "<span color='#8066E8'>󰖪  No Internet Connection</span>",
+    //   "interval": 1
+    // },
+
+    "network#download": {
+      "interface": "enp6s0",
+      "format-ethernet": "{bandwidthDownBytes}     ",
+      "format-wifi": "{bandwidthDownBytes}",
+      "tooltip": false,
+      "interval": 1
+    },
+    "network#upload": {
+      "interface": "enp6s0",
+      "format-ethernet": "{bandwidthUpBytes}",
+      "format-wifi": "{bandwidthUpBytes}",
+      "tooltip": false,
+      "interval": 1
+    },
+
+    // "custom/net-speed": {
+    //   "exec": "~/.config/waybar/scripts/net-speed.sh",
+    //   "interval": 1,
+    //   "tooltip": false
+    // },
+    "pulseaudio": {
+      "tooltip": false,
+      "format": "<span color='#CDD6F4'>VOL</span> {volume}%   ",
+      "rotate": 0,
+      "format-muted": "<span color='#8066E8'>VOL MUTED 0%</span>   ",
+      "on-click": "volumecontrol.sh -o m",
+      "on-click-right": "volumecontrol.sh -s ''",
+      "on-scroll-up": "volumecontrol.sh -o i 1",
+      "on-scroll-down": "volumecontrol.sh -o d 1",
+      "tooltip-format": "{desc}",
+      "scroll-step": 1,
+      "format-icons": {
+        "headphone": "",
+        "hands-free": "",
+        "headset": "",
+        "phone": "",
+        "portable": "",
+        "car": "",
+        "default": ["", "", ""]
+      }
+    },
+    "pulseaudio#microphone": {
+      "tooltip": false,
+      "format": "{format_source}",
+      "rotate": 0,
+      "format-source": "<span color='#CDD6F4'>MIC</span> {volume}%",
+      "format-source-muted": "<span color='#8066E8'>MIC MUTED 0%</span>",
+      "on-click": "volumecontrol.sh -i m",
+      "on-click-middle": "pavucontrol -t 4",
+      "on-scroll-up": "volumecontrol.sh -i i 1",
+      "on-scroll-down": "volumecontrol.sh -i d 1",
+      "tooltip-format": "{source_desc}",
+      "scroll-step": 1
+    },
+    "cpu": {
+      "tooltip": false,
+      "interval": 3,
+      "rotate": 0,
+      "format": "CPU {usage}%",
+      "format-alt": "{icon0}{icon1}{icon2}{icon3}{icon4}{icon5}{icon6}{icon7}{icon8}", // <-- This line now displays 10 bars
+      "format-icons": [
+        "⣀", // Your preferred lowest bar (U+2581)     ⣀ ⣄ ⣆ ⣇ ⣧ ⣴ ⣶ ⣷ ⣿
+        "⣄",
+        "⣆",
+        "⣇",
+        "⣧",
+        "⣴",
+        "⣶",
+        "⣷",
+        "⣿" // Added to make 10 total icons
+      ]
+    },
+    "custom/gpuinfo#amd": {
+      "exec": " gpuinfo.sh --use amd",
+      "return-type": "json",
+      "format": "<span color='#CDD6F4'>GPU</span> {}",
+      "rotate": 0,
+      "interval": 3, // once every 3 seconds
+      "tooltip": true,
+      "max-length": 1000
+    },
+    "memory": {
+      "states": {
+        "c": 90, // critical
+        "h": 60, // high
+        "m": 30 // medium
+      },
+      "interval": 10, // once every 15 seconds
+      "format": "<span color='#CDD6F4'>RAM</span> {used} GB",
+      "format-m": "<span color='#CDD6F4'>RAM</span> {used} GB",
+      "format-h": "<span color='#CDD6F4'>RAM</span> {used} GB",
+      "format-c": " <span color='#CDD6F4'>RAM</span> {used} GB",
+      // "format-alt": "<span color='#CDD6F4'>RAM</span> {used}GB ({percentage}%)",
+      "max-length": 30,
+      "tooltip": false,
+      "tooltip-format": "Usage: {used:0.1f} GB of {total:0.1f} GB\nPercentage: {percentage}%",
+      "rotate": 0
+    },
+    "idle_inhibitor": {
+      "format": "{icon}",
+      "tooltip": false,
+      "start-activated": true,
+      "format-icons": {
+        "activated": " AWAKE",
+        "deactivated": "<span color='#8066E8'> SLEEP</span>"
+      }
+    },
+    "custom/power": {
+      "format": "⏼",
+      "rotate": 0,
+      "exec": "echo ; echo Shutdown",
+      "on-click": "logoutlaunch.sh 2",
+      "on-click-right": "logoutlaunch.sh 1",
+      "interval": 86400, // once every day
+      "tooltip": false
+    },
+    // Custom padding modules
+    "custom/padd": {
+      "format": "",
+      "tooltip": false
+    }
+  }
+]

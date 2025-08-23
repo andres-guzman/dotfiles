@@ -1,0 +1,148 @@
+/* Variables */
+
+/* Light gray */
+@define-color text-main #c9cae7;
+
+/* Light gray with opacity */
+@define-color text-main-opacity rgba(205, 214, 244, 0.25);
+
+/* Dark gray */
+@define-color text-secondary #b19aff;
+
+/* Mauve */
+@define-color text-terciary #8e72ff;
+
+/* Dark gray with opacity */
+@define-color tooltip-background rgba(30, 30, 46, 0.5);
+
+* {
+  border: none;
+  /* font-family: "Overpass Nerd Font"; */
+  /* font-family: "M+1Code Nerd Font Propo"; */
+  /* font-family: "M+1CodeLat60 Nerd Font Propo"; */
+  /* font-family: "M+1 Nerd Font Propo"; */
+  /* font-family: "M+2 Nerd Font Propo"; */
+  /* font-family: "NotoSans Nerd Font Propo"; */
+  /* font-family: "RobotoMono Nerd Font Propo"; */
+  /* font-family: "Hasklug Nerd Font Mono"; */
+  /* font-family: "LiterationMono Nerd Font Propo"; */
+  /* font-family: "Adwaita Sans"; */
+  /* font-family: "Cantarell"; */
+  /* font-family: "JuliaMono Bold"; */
+  font-family: "JetBrainsMono Nerd Font Propo";
+  font-size: 9px;
+  font-weight: 900;
+}
+
+#test {
+  color: rgb(142, 114, 255);
+}
+
+window#waybar {
+  background-color: rgba(46, 36, 87, 0.5);
+}
+
+.modules-left,
+.modules-center,
+.modules-right {
+  color: @text-main;
+}
+
+.modules-left,
+.modules-right {
+  padding-top: 1px;
+  margin-left: 13px;
+  margin-right: 13px;
+}
+
+#workspaces {
+  background-color: transparent;
+}
+
+#workspaces button {
+  color: @text-main;
+  margin: 0;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  padding-left: 7px;
+  padding-right: 7px;
+  animation: ws_normal 2s ease-in-out;
+  transition: all 0.45s ease-in-out;
+  border: 1px solid transparent;
+  background-color: transparent;
+}
+
+#workspaces button:hover {
+  color: @text-terciary;
+  background-color: transparent;
+}
+
+#workspaces button.active {
+  color: @text-terciary;
+  background-color: transparent;
+}
+
+tooltip {
+  color: @text-main;
+  font-size: 16px;
+  font-weight: 800;
+  background-color: @tooltip-terciary;
+  border-radius: 8px;
+  border: 2px solid @text-terciary;
+  padding: 5px;
+}
+
+
+
+
+
+/* #network.download {
+  min-width: 60px;
+  margin-right: 5px;
+} */
+
+#network.upload {
+  min-width: 42px;
+}
+
+#memory {
+  min-width: 65px;
+}
+
+#custom-updates {
+  color: @text-terciary;
+}
+
+#mpris {
+  /* font-size: 9px; */
+  /* font-weight: 600; */
+  color: @text-terciary;
+}
+
+#custom-cava {
+  color: @text-terciary;
+  font-size: 6px;
+  transition: all 0.45s ease-in-out;
+}
+
+#custom-power {
+  font-family: "JetBrainsMono Nerd Font Propo";
+  font-size: 10px;
+  /* margin-top: 1px; */
+  transition: all 0.45s ease-in-out;
+}
+
+#idle_inhibitor {
+  padding-top: 0px;
+}
+
+/* Custom padding */
+#custom-padd {
+  padding: 0px 10px;
+  color: @text-main-opacity;
+  /* font-size: 9px; */
+}
+
+#pulseaudio-microphone {
+  color: red;
+}

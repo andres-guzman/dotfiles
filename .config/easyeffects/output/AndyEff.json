@@ -1,0 +1,31 @@
+{
+    "output": {
+        "bass_enhancer#0": {
+            "amount": 9.99999999999998,
+            "blend": 0.0,
+            "bypass": false,
+            "floor": 20.0,
+            "floor-active": false,
+            "harmonics": 8.5,
+            "input-gain": 1.0,
+            "output-gain": 1.0,
+            "scope": 100.0
+        },
+        "blocklist": [],
+        "exciter#0": {
+            "amount": 2.500000000000001,
+            "blend": 0.0,
+            "bypass": false,
+            "ceil": 16000.0,
+            "ceil-active": false,
+            "harmonics": 8.5,
+            "input-gain": 0.0,
+            "output-gain": 1.0,
+            "scope": 7600.0
+        },
+        "plugins_order": [
+            "bass_enhancer#0",
+            "exciter#0"
+        ]
+    }
+}

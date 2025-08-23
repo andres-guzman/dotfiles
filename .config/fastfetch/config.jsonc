@@ -1,0 +1,94 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "file", // Logo type: auto, builtin, small, file, etc.
+    "source": "/home/andres/.config/fastfetch/homer.txt", // Built-in logo name or file path
+    "width": 65, // Width in characters (for image logos)
+    "height": 35, // Height in characters (for image logos)
+    "padding": {
+      "top": 0, // Top padding
+      "left": 0, // Left padding
+      "right": 2 // Right padding
+    },
+    "color": {
+      // Override logo colors
+      "1": "blue",
+      "2": "green"
+    }
+  },
+  "display": {
+    "constants": [
+      "█ "
+    ]
+  },
+  "modules": [
+    {
+      "key": "{$1} OS        ",
+      "type": "os",
+      "keyColor": "38;5;210",
+      "color": "38;5;210" // Color for the OS module
+    },
+    {
+      "key": "{$1} Kernel    ",
+      "type": "kernel",
+      "keyColor": "38;5;84",
+      "color": "38;5;84" // Color for the kernel module
+    },
+    {
+      "key": "{$1} WM        ",
+      "type": "wm",
+      "keyColor": "38;5;129",
+      "color": "38;5;129" // Color for the uptime module
+    },
+    {
+      "key": "{$1} Packages  ",
+      "type": "packages",
+      "keyColor": "38;5;200",
+      "color": "38;5;200" // Color for the packages module
+    },
+    {
+      "key": "{$1} CPU       ",
+      "type": "cpu",
+      "keyColor": "38;5;75",
+      "color": "38;5;75" // Color for the CPU module
+    },
+    {
+      "key": "{$1} Memory    ",
+      "type": "memory",
+      "keyColor": "38;5;123",
+      "color": "38;5;123" // Color for the memory module
+    },
+    {
+      "key": "{$1} Disk      ",
+      "type": "disk",
+      "keyColor": "38;5;39",
+      "color": "38;5;39" // Color for the disk module
+    },
+    {
+      "key": "{$1} Display   ",
+      "type": "display",
+      "keyColor": "38;5;200",
+      "color": "38;5;200" // Color for the display module
+    },
+    {
+      // localip IPv4
+      "key": "{$1} Local IP  ",
+      "type": "localip",
+      "showPrefixLen": true,
+      "showIpv4": true,
+      "showIpv6": false,
+      "showMtu": true,
+      "format": "{ifname}: {ipv4} {#2}[MTU:{mtu}]",
+      "keyColor": "38;5;147",
+      "color": "38;5;147" // Color for the shell module
+    },
+    {
+      "key": "{$1} Public IP ",
+      "type": "publicip",
+      "ipv6": false,
+      "format": "{ip} {#2}[{location}]",
+      "keyColor": "38;5;147",
+      "color": "38;5;147" // Color for the shell module
+    }
+  ]
+}

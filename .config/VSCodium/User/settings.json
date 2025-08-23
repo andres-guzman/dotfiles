@@ -1,0 +1,133 @@
+{
+  "telemetry.telemetryLevel": "off",
+  "css.format.spaceAroundSelectorSeparator": true,
+  "css.lint.duplicateProperties": "warning",
+  "workbench.editor.openPositioning": "last",
+  "workbench.tree.enableStickyScroll": false,
+  "workbench.editor.enablePreviewFromCodeNavigation": true,
+  "workbench.editor.highlightModifiedTabs": true,
+  "workbench.editor.enablePreview": false,
+  "workbench.commandPalette.experimental.suggestCommands": true,
+  "editor.minimap.side": "right",
+  "editor.minimap.showSlider": "always",
+  "editor.cursorBlinking": "phase",
+  "editor.scrollbar.vertical": "hidden",
+  "editor.scrollbar.verticalScrollbarSize": 0,
+  "editor.stickyScroll.enabled": false,
+  // font
+  "editor.fontFamily": "'JetBrainsMono Nerd Font Propo', monospace",
+  "editor.fontSize": 12.25,
+  "editor.lineHeight": 1.45,
+  "editor.fontWeight": 500,
+  "editor.fontLigatures": false,
+  "editor.linkedEditing": true,
+  "editor.smoothScrolling": true,
+  // terminal
+  "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font Propo', monospace",
+  "terminal.integrated.fontSize": 12.25,
+  "terminal.integrated.lineHeight": 1.15,
+  "terminal.integrated.fontWeight": 400,
+  "terminal.integrated.smoothScrolling": true,
+  "terminal.external.linuxExec": "kitty",
+  "terminal.explorerKind": "both",
+  "terminal.sourceControlRepositoriesKind": "both",
+  "terminal.external.windowsExec": "",
+  "editor.tokenColorCustomizations": {
+    "[Tokyo Night Storm]": {
+      // or "[Tokyo Night Storm]"
+      "textMateRules": [
+        {
+          "scope": [
+            "comment keyword.codetag.notation",
+            "comment.block.documentation keyword",
+            "comment.block.documentation storage.type.class"
+          ],
+          "settings": {
+            "foreground": "#bb9af7"
+          }
+        },
+        {
+          "scope": [
+            "comment.block.documentation entity.name.type.instance"
+          ],
+          "settings": {
+            "foreground": "#73daca",
+            "fontStyle": "italic"
+          }
+        },
+        {
+          "scope": [
+            "comment.block.documentation entity.name.type punctuation.definition.bracket"
+          ],
+          "settings": {
+            "foreground": "#bb9af7"
+          }
+        },
+        {
+          "scope": [
+            "comment.block.documentation variable"
+          ],
+          "settings": {
+            "foreground": "#e0af68",
+            "fontStyle": "italic"
+          }
+        }
+      ]
+    }
+  },
+  // security
+  "extensions.autoUpdate": false,
+  "security.workspace.trust.untrustedFiles": "newWindow",
+  "security.workspace.trust.startupPrompt": "never",
+  "security.workspace.trust.enabled": false,
+  "npm.fetchOnlinePackageInfo": false,
+  // code formatting
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  // Github Copilot
+  "github.copilot.enable": {
+    "CSS": true,
+    "HTML": true,
+    "JavaScript": true,
+    "JavaScript JSX": true,
+    "JSON": true,
+    "JSON with Comments": true,
+    "Python": true,
+    "markdown": true,
+    "SCSS": true,
+    "TypeScript": true,
+    "TypeScript JSX": true,
+    "XML": true
+  },
+  "workbench.editorAssociations": {
+    "*.svg": "default"
+  },
+  "editor.colorDecoratorsActivatedOn": "hover",
+  "workbench.productIconTheme": "material-product-icons",
+  "git.autofetch": true,
+  "workbench.startupEditor": "none",
+  "liveServer.settings.donotShowInfoMsg": true,
+  "workbench.iconTheme": "eq-material-theme-icons-palenight",
+  "symbols.hidesExplorerArrows": false,
+  "workbench.colorTheme": "Tokyo Night",
+  "editor.renderWhitespace": "none",
+  "editor.guides.indentation": false,
+  "breadcrumbs.enabled": false,
+  "workbench.layoutControl.enabled": false,
+  "workbench.navigationControl.enabled": false,
+  "window.commandCenter": false,
+  "editor.renderControlCharacters": false
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Automatic login for user %i
+After=systemd-user-sessions.service
+
+[Service]
+ExecStart=-/usr/bin/login -f %i
+StandardInput=tty
+TTYPath=/dev/tty1
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

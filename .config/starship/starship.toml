@@ -1,0 +1,296 @@
+# Get editor completions based on the config schema
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Sets user-defined palette
+# Palettes must be defined _after_ this line
+palette = "catppuccin_macchiato"
+
+# Disable the blank line at the start of the prompt
+add_newline = false
+
+# Starship modules
+
+format = "$character $git_branch$git_commit❯  "
+
+[character]
+success_symbol = "[󰊠](sapphire)"
+error_symbol = '[󰧵 error](red)'
+vimcmd_symbol = "[ ❮](subtext1)" # For use with zsh-vi-mode
+
+# Status: Shows exit code if the last command failed
+[status]
+format = "[$symbol$status]($style) "
+symbol = "✘"
+success_symbol = ""
+signal_symbol = "⚡"
+style = "bold red"
+disabled = false
+pipestatus = true
+
+[directory]
+# truncation_length = 8
+style = "sapphire"
+read_only = " "
+read_only_style = "sapphire"
+home_symbol = "/home/andres"
+
+[sudo]
+style = 'bold green'
+symbol = 'sudo '
+disabled = false
+
+# Command duration: Shows how long the last command took
+[cmd_duration]
+min_time = 100  # Show duration over 500ms
+format = "[⏱ $duration]($style) "
+style = "bold yellow"
+disabled = false
+
+# Package: Shows current package version if in a project directory
+[package]
+symbol = "📦 "
+format = "[$symbol$version]($style) "
+style = "bold purple"
+disabled = false
+
+[os]
+format = "on [($name )]($style)"
+style = "bold blue"
+disabled = false
+
+[os.symbols]
+Arch = "Arch is the best! "
+
+# === Language Modules ===
+
+[bun]
+format = 'via [ $version](bold green) '
+
+[c]
+format = 'via [$name $version]($style)'
+
+[nodejs]
+format = "[ $version](green) "
+disabled = false
+
+[deno]
+format = 'via [ $version](green bold) '
+
+[java]
+format = "[ $version](red) "
+disabled = false
+
+[python]
+format = "[ $version](yellow) "
+pyenv_version_name = true
+disabled = false
+
+
+[rust]
+format = "[ $version](orange) "
+disabled = false
+
+[golang]
+format = "[ $version](blue) "
+disabled = false
+
+[php]
+format = "[ $version](purple) "
+disabled = false
+
+# [html]
+# format = "[](red) "
+# disabled = false
+
+# [css]
+# format = "[](blue) "
+# disabled = false
+
+# [markdown]
+# format = "[](lavender) "
+# disabled = false
+
+# [typescript]
+# format = "[ $version](mauve) "
+# disabled = false
+
+[zig]
+symbol = '⚡️ '
+
+[shell]
+fish_indicator = '󰈺 '
+powershell_indicator = '_'
+unknown_indicator = 'mystery shell'
+style = 'cyan bold'
+disabled = false
+
+[git_status]
+format = '([$all_status$ahead_behind](green) )'
+disabled = false
+conflicted = '= [++\($count\)](green)'
+ahead = '⇡ [++\($count\)](green)'
+behind = '⇣ [++\($count\)](green)'
+diverged = '⇕ [⇡$ahead_count ⇣$behind_count](green) '
+up_to_date = '✓'
+untracked = '? [++\($count\)](green)'
+stashed = '$ [++\($count\)](green)'
+modified = '! [++\($count\)](green)'
+staged = '[++\($count\)](green)'
+renamed = '» [++\($count\)](green)'
+deleted = '✘ [++\($count\)](green)'
+
+# Jobs: Shows background jobs
+[jobs]
+symbol = "⚙️"
+format = "[$symbol$number]($style) "
+style = "bold blue"
+disabled = false
+
+# Time: Shows the current time
+[time]
+format = "[ $time]($style) "
+# time_format = "%-I:%M %p"
+time_format = '%v'
+style = "bold green"
+disabled = false
+
+# Memory usage: Shows memory usage when high
+[memory_usage]
+symbol = "🐏"
+threshold = 70
+format = "[$symbol $ram]($style) "
+style = "bold cyan"
+disabled = false
+
+[git_branch]
+symbol = ' '
+style = "mauve"
+always_show_remote = false
+
+[git_commit]
+commit_hash_length = 7
+style = "mauve"
+tag_symbol = ' '
+
+[git_state]
+format = '[\($state( $progress_current of $progress_total)\)]($style) '
+cherry_pick = '[🍒 PICKING](bold red)'
+
+[git_metrics]
+added_style = 'bold blue'
+deleted_style = 'bold red'
+format = '[+$added]($added_style)/[-$deleted]($deleted_style) '
+disabled = false
+
+# Palette definitions
+[palettes.catppuccin_latte]
+rosewater = "#dc8a78"
+flamingo = "#dd7878"
+pink = "#ea76cb"
+mauve = "#8839ef"
+red = "#d20f39"
+maroon = "#e64553"
+peach = "#fe640b"
+yellow = "#df8e1d"
+green = "#40a02b"
+teal = "#179299"
+sky = "#04a5e5"
+sapphire = "#209fb5"
+blue = "#1e66f5"
+lavender = "#7287fd"
+text = "#4c4f69"
+subtext1 = "#5c5f77"
+subtext0 = "#6c6f85"
+overlay2 = "#7c7f93"
+overlay1 = "#8c8fa1"
+overlay0 = "#9ca0b0"
+surface2 = "#acb0be"
+surface1 = "#bcc0cc"
+surface0 = "#ccd0da"
+base = "#eff1f5"
+mantle = "#e6e9ef"
+crust = "#dce0e8"
+
+[palettes.catppuccin_frappe]
+rosewater = "#f2d5cf"
+flamingo = "#eebebe"
+pink = "#f4b8e4"
+mauve = "#ca9ee6"
+red = "#e78284"
+maroon = "#ea999c"
+peach = "#ef9f76"
+yellow = "#e5c890"
+green = "#a6d189"
+teal = "#81c8be"
+sky = "#99d1db"
+sapphire = "#85c1dc"
+blue = "#8caaee"
+lavender = "#babbf1"
+text = "#c6d0f5"
+subtext1 = "#b5bfe2"
+subtext0 = "#a5adce"
+overlay2 = "#949cbb"
+overlay1 = "#838ba7"
+overlay0 = "#737994"
+surface2 = "#626880"
+surface1 = "#51576d"
+surface0 = "#414559"
+base = "#303446"
+mantle = "#292c3c"
+crust = "#232634"
+
+[palettes.catppuccin_macchiato]
+rosewater = "#f4dbd6"
+flamingo = "#f0c6c6"
+pink = "#f5bde6"
+mauve = "#c6a0f6"
+red = "#ed8796"
+maroon = "#ee99a0"
+peach = "#f5a97f"
+yellow = "#eed49f"
+green = "#a6da95"
+teal = "#8bd5ca"
+sky = "#91d7e3"
+sapphire = "#7dc4e4"
+blue = "#8aadf4"
+lavender = "#b7bdf8"
+text = "#cad3f5"
+subtext1 = "#b8c0e0"
+subtext0 = "#a5adcb"
+overlay2 = "#939ab7"
+overlay1 = "#8087a2"
+overlay0 = "#6e738d"
+surface2 = "#5b6078"
+surface1 = "#494d64"
+surface0 = "#363a4f"
+base = "#24273a"
+mantle = "#1e2030"
+crust = "#181926"
+
+[palettes.catppuccin_mocha]
+rosewater = "#f5e0dc"
+flamingo = "#f2cdcd"
+pink = "#f5c2e7"
+mauve = "#cba6f7"
+red = "#f38ba8"
+maroon = "#eba0ac"
+peach = "#fab387"
+yellow = "#f9e2af"
+green = "#a6e3a1"
+teal = "#94e2d5"
+sky = "#89dceb"
+sapphire = "#74c7ec"
+blue = "#89b4fa"
+lavender = "#b4befe"
+text = "#cdd6f4"
+subtext1 = "#bac2de"
+subtext0 = "#a6adc8"
+overlay2 = "#9399b2"
+overlay1 = "#7f849c"
+overlay0 = "#6c7086"
+surface2 = "#585b70"
+surface1 = "#45475a"
+surface0 = "#313244"
+base = "#1e1e2e"
+mantle = "#181825"
+crust = "#11111b"

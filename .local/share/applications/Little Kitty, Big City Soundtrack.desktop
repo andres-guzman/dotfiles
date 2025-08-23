@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Little Kitty, Big City Soundtrack
+Comment=Play this game on Steam
+Exec=steam steam://rungameid/2912860
+Icon=steam_icon_2912860
+Terminal=false
+Type=Application
+Categories=Game;

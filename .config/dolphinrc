@@ -1,0 +1,62 @@
+[$Version]
+update_info=dolphin_detailsmodesettings.upd:rename-leading-padding
+
+[CompactMode]
+IconSize=22
+PreviewSize=32
+
+[ContextMenu]
+ShowViewMode=false
+
+[DetailsMode]
+PreviewSize=32
+
+[ExtractDialog]
+2 screens: Window-Maximized=true
+3 screens: Window-Maximized=true
+
+[General]
+DoubleClickViewAction=none
+EditableUrl=true
+GlobalViewProps=false
+OpenNewTabAfterLastTab=true
+RememberOpenedTabs=false
+ShowFullPath=true
+ShowFullPathInTitlebar=true
+ShowSelectionToggle=false
+ShowStatusBar=FullWidth
+Version=202
+ViewPropsTimestamp=2023,4,26,16,58,48.324
+
+[IconsMode]
+IconSize=128
+MaximumTextLines=1
+PreviewSize=144
+
+[InformationPanel]
+previewsShown=false
+showHovered=false
+
+[KFileDialog Settings]
+Places Icons Auto-resize=false
+Places Icons Static Size=32
+
+[KPropertiesDialog]
+2560x1080 screen: Window-Maximized=true
+
+[MainWindow][Toolbar mainToolBar]
+IconSize=16
+ToolButtonStyle=IconOnly
+
+[PlacesPanel]
+IconSize=32
+
+[PreviewSettings]
+Plugins=appimagethumbnail,audiothumbnail,cursorthumbnail,djvuthumbnail,ebookthumbnail,exrthumbnail,imagethumbnail,jpegthumbnail,windowsimagethumbnail,gsthumbnail,rawthumbnail,svgthumbnail,ffmpegthumbs,gdk-pixbuf-thumbnailer
+
+[Toolbar mainToolBar]
+IconSize=16
+ToolButtonStyle=IconOnly
+
+[ViewPropertiesDialog]
+3 screens: Window-Maximized=true
