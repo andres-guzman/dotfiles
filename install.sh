@@ -155,6 +155,11 @@ sudo -u andres yay -S --noconfirm - < /home/andres/dotfiles/pkg_aur.txt
 # Step 7: Dotfile Restoration
 # ---------------------------------------------------
 echo "Restoring dotfiles..."
+# Create the necessary directories before restoration
+mkdir -p /home/andres/.config/systemd/user
+mkdir -p /home/andres/.local/share/fonts
+mkdir -p /home/andres/.local/share/themes
+
 # Set up a git alias and restore dotfiles
 # This part assumes you have backed up your home directory files
 sudo -u andres bash << EOL
