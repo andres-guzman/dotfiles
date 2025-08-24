@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# Enable strict mode for error handling
+set -e
+set -o pipefail
+
+# Define colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NOCOLOR='\033[0m'
+
 # Define the repository URL
 REPO_URL="https://github.com/andres-guzman/dotfiles.git"
 DOTFILES_DIR="$HOME/dotfiles"
@@ -7,7 +18,7 @@ DOTFILES_DIR="$HOME/dotfiles"
 # ---------------------------------------------------
 # Step 1: Clone the dotfiles repository
 # ---------------------------------------------------
-echo "Cloning dotfiles repository..."
+echo -e "${CYAN}--- Step 1: Cloning the dotfiles repository ---${NOCOLOR}"
 git clone --bare "$REPO_URL" "$DOTFILES_DIR"
 
 # ---------------------------------------------------
@@ -17,7 +28,8 @@ git clone --bare "$REPO_URL" "$DOTFILES_DIR"
 # WARNING: This is a destructive operation on this device.
 DRIVE="/dev/nvme0n1"
 
-echo "Partitioning and formatting the drive..."
+echo -e "${CYAN}--- Step 2: Disk Partitioning and Formatting ---${NOCOLOR}"
+echo -e "${YELLOW}Partitioning and formatting the drive...${NOCOLOR}"
 
 # Step 2-A: Partition the disk
 parted -s "$DRIVE" mklabel gpt
@@ -35,7 +47,8 @@ swapon "${DRIVE}p2"
 # ---------------------------------------------------
 # Step 3: Base System Installation
 # ---------------------------------------------------
-echo "Mounting partitions and installing base system..."
+echo -e "${CYAN}--- Step 3: Base System Installation ---${NOCOLOR}"
+echo -e "${YELLOW}Mounting partitions and installing base system...${NOCOLOR}"
 
 # Step 3-A: Mount partitions
 mount "${DRIVE}p3" /mnt
@@ -51,7 +64,8 @@ genfstab -U /mnt >> /mnt/etc/fstab
 # ---------------------------------------------------
 # Step 4: System Configuration (Inside chroot)
 # ---------------------------------------------------
-echo "Entering chroot environment to configure the system..."
+echo -e "${CYAN}--- Step 4: System Configuration (Inside chroot) ---${NOCOLOR}"
+echo -e "${YELLOW}Entering chroot environment to configure the system...${NOCOLOR}"
 
 arch-chroot /mnt << EOF
     # Step 4-A: Time, Locale, and Hostname
@@ -109,12 +123,13 @@ arch-chroot /mnt << EOF
     systemctl enable uwsm@andres.service
 EOF
 
-echo "Exiting chroot environment..."
+echo -e "${YELLOW}Exiting chroot environment...${NOCOLOR}"
 
 # ---------------------------------------------------
 # Step 5: Automounting Other Drives
 # ---------------------------------------------------
-echo "Mounting other hard drives..."
+echo -e "${CYAN}--- Step 5: Automounting Other Drives ---${NOCOLOR}"
+echo -e "${YELLOW}Mounting other hard drives...${NOCOLOR}"
 
 # Create mount points for the drives
 mkdir /mnt/Documents /mnt/Videos /mnt/Backup
@@ -134,12 +149,13 @@ echo "UUID=${BACKUP_UUID} /mnt/Backup ext4 defaults,nodev,nosuid,noexec,nofail,x
 # ---------------------------------------------------
 # Step 6: Hyprland and Other Package Installation
 # ---------------------------------------------------
+echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR}"
 # Step 6-A: Install Official Packages
-echo "Installing official packages from pkg_official.txt..."
+echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 pacman -Syu --noconfirm - < /home/andres/dotfiles/pkg_official.txt
 
 # Step 6-B: Install AUR Helper (Yay)
-echo "Installing yay from AUR..."
+echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
 git clone https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin
 chown -R andres:andres /home/andres/yay-bin
 sudo -u andres bash << EOL
@@ -148,20 +164,20 @@ sudo -u andres bash << EOL
 EOL
 
 # Step 6-C: Install AUR Packages with Yay
-echo "Installing AUR packages from pkg_aur.txt..."
+echo -e "${YELLOW}Installing AUR packages from pkg_aur.txt...${NOCOLOR}"
 sudo -u andres yay -S --noconfirm - < /home/andres/dotfiles/pkg_aur.txt
 
 # ---------------------------------------------------
 # Step 7: Dotfile Restoration
 # ---------------------------------------------------
-echo "Restoring dotfiles..."
+echo -e "${CYAN}--- Step 7: Dotfile Restoration ---${NOCOLOR}"
+echo -e "${YELLOW}Restoring dotfiles...${NOCOLOR}"
 # Create the necessary directories before restoration
 mkdir -p /home/andres/.config/systemd/user
 mkdir -p /home/andres/.local/share/fonts
 mkdir -p /home/andres/.local/share/themes
 
 # Set up a git alias and restore dotfiles
-# This part assumes you have backed up your home directory files
 sudo -u andres bash << EOL
     git --git-dir=$HOME/dotfiles --work-tree=$HOME config --local status.showUntrackedFiles no
     git --git-dir=$HOME/dotfiles --work-tree=$HOME checkout --force
@@ -170,6 +186,7 @@ EOL
 # ---------------------------------------------------
 # Step 8: Final Clean-up and Reboot
 # ---------------------------------------------------
-echo "Installation complete. Unmounting partitions."
+echo -e "${CYAN}--- Step 8: Final Clean-up and Reboot ---${NOCOLOR}"
+echo -e "${GREEN}Installation complete. Unmounting partitions.${NOCOLOR}"
 umount -R /mnt
-echo "You can now reboot into your new system."
+echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
