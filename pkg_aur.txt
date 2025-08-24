@@ -1,0 +1,12 @@
+vscodium-bin
+vscodium-bin-marketplace
+zen-browser-bin
+thunderbird-beta-bin
+materialgram-bin
+hyprsysteminfo
+raw-thumbnailer
+vesktop
+ttf-juliamono
+swaylock-effects-git
+python-auditok
+python-ffsubsync
