@@ -56,7 +56,7 @@ mkdir /mnt/boot
 mount "${DRIVE}p1" /mnt/boot
 
 # Step 3-B: Install the base system and essential packages
-pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr systemd-boot
+pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr
 
 # Step 3-C: Generate fstab
 genfstab -U /mnt >> /mnt/etc/fstab
