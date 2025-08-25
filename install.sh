@@ -302,9 +302,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     set -e
     set -o pipefail
 
-    # FIX: Removed 'local' keyword
     YAY_CLONE_RETRIES=3
-    # FIX: Removed 'local' keyword
     YAY_CLONE_SUCCESS=false
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
@@ -322,14 +320,16 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     if ! \$YAY_CLONE_SUCCESS; then
         echo "Error: Failed to clone yay-bin after multiple attempts. AUR packages will not be installed."
-        exit 0 # Exit this chroot block gracefully, but allow main script to continue
+        # Instead of exiting this heredoc with 0, we can write a flag to /tmp to signal failure to the next block.
+        echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
+        exit 0 # Exit this chroot block gracefully.
     fi
 
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     # Run makepkg as the 'andres' user
     sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay inside chroot."; exit 1; }
-
+    echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
 
 # Step 6-C: Install AUR Packages with Yay
@@ -340,8 +340,15 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     set -e
     set -o pipefail
 
-    # Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
-    # FIX: Removed 'local' keyword
+    # Read the status from the temporary file to check if yay was installed.
+    # If the file doesn't exist or indicates failure, skip AUR packages.
+    if [ -f "/tmp/yay_install_status.tmp" ] && [ "\$(cat /tmp/yay_install_status.tmp)" = "SUCCESS" ]; then
+        echo "Yay was successfully installed. Proceeding with AUR packages."
+    else
+        echo "Warning: Yay was not successfully installed. Skipping AUR package installation."
+        exit 0 # Exit this chroot block gracefully.
+    fi
+
     pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt" # This path should be correct from outer script
 
     if [ ! -f "\${pkg_aur_path}" ]; then
@@ -352,9 +359,9 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     echo "Installing AUR packages listed in \${pkg_aur_path}..."
     if ! sudo -u andres yay -S --noconfirm - < "\${pkg_aur_path}"; then
         echo "Warning: Some AUR packages failed to install. Please review the output above."
-        # Don't exit here, allow main script to continue, as user chose to skip or some packages might be non-critical.
+        # Don't exit here, allow main script to continue, as some packages might be non-critical.
     fi
-
+    rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
 
 # ---------------------------------------------------
@@ -368,11 +375,11 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     set -e
     set -o pipefail
 
+    # FIX: Add defaultBranch configuration to prevent warnings
+    git config --global init.defaultBranch main || { echo "Warning: Failed to set git default branch globally. Continuing."; }
+
     # Variables from outer script need to be explicitly passed or reconstructed.
-    # Using hardcoded value for DOTFILES_BARE_DIR as it's static and known.
-    # FIX: Removed 'local' keyword
     DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
-    # FIX: Removed 'local' keyword
     REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
 
     git init --bare "\${DOTFILES_BARE_DIR_CHROOT}" || { echo "Error: Failed to initialize bare dotfiles repository."; exit 1; }
@@ -410,7 +417,17 @@ echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Act
 echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOCOLOR}"
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
-execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "false"
+
+# Check if yay/AUR packages were successfully installed before attempting to enable uwsm.
+# This check is performed using the status file created in Step 6-B.
+# We also want this to be skippable in case uwsm is truly critical but AUR is down.
+# The user can then manually fix uwsm later.
+if execute_command "Check if yay was successfully installed for uwsm service" "arch-chroot /mnt bash -c 'if [ -f \"/tmp/yay_install_status.tmp\" ] && [ \"\$(cat /tmp/yay_install_status.tmp)\" = \"SUCCESS\" ]; then exit 0; else exit 1; fi'" "true"; then
+    execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true" # Made skippable for robustness
+else
+    echo -e "${YELLOW}Warning: AUR packages (including uwsm) might not have been installed due to previous failures. Skipping enablement of uwsm.service.${NOCOLOR}"
+fi
+
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
