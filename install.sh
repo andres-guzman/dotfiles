@@ -160,7 +160,8 @@ arch-chroot /mnt /bin/sh << EOF_CHROOT_SCRIPT
     # This assumes the Include line is immediately after [multilib].
     sed -i '/\[multilib\]/{n;s/^#//}' /etc/pacman.conf || { echo "Error: Failed to uncomment multilib section (Include line) in pacman.conf."; exit 1; }
     sed -i '/\[multilib\]/s/^#//' /etc/pacman.conf || { echo "Error: Failed to uncomment [multilib] header in pacman.conf."; exit 1; }
-    pacman -Syy || { echo "Error: Failed to synchronize package databases after enabling multilib."; exit 1; } # Force sync after enabling multilib
+    # Perform a full system update and database synchronization after enabling multilib
+    pacman -Syyu --noconfirm || { echo "Error: Failed to synchronize package databases and perform full system update after enabling multilib."; exit 1; }
 
     # Step 4-D: Bootloader Configuration
     echo "Configuring systemd-boot..."
@@ -302,7 +303,7 @@ echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
 echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
 
 # Clean up the temporary dotfiles directory from NVMe
-rm -rf "$DOTFILES_TEMP_NVME_DIR" || { echo "${RED}Warning: Failed to remove temporary dotfiles directory from NVMe. Please clean up manually.${NOCOLOR}"; }
+rm -rf "$DOTFILES_TEMP_NVME_DIR" || { echo "Warning: Failed to remove temporary dotfiles directory from NVMe. Please clean up manually."; }
 
-umount -R /mnt || { echo "${RED}Error: Failed to unmount /mnt. Please unmount manually.${NOCOLOR}"; exit 1; }
+umount -R /mnt || { echo -e "${RED}Error: Failed to unmount /mnt. Please unmount manually.${NOCOLOR}"; exit 1; }
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
