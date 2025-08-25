@@ -418,15 +418,10 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# Check if yay/AUR packages were successfully installed before attempting to enable uwsm.
-# This check is performed using the status file created in Step 6-B.
-# We also want this to be skippable in case uwsm is truly critical but AUR is down.
-# The user can then manually fix uwsm later.
-if execute_command "Check if yay was successfully installed for uwsm service" "arch-chroot /mnt bash -c 'if [ -f \"/tmp/yay_install_status.tmp\" ] && [ \"\$(cat /tmp/yay_install_status.tmp)\" = \"SUCCESS\" ]; then exit 0; else exit 1; fi'" "true"; then
-    execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true" # Made skippable for robustness
-else
-    echo -e "${YELLOW}Warning: AUR packages (including uwsm) might not have been installed due to previous failures. Skipping enablement of uwsm.service.${NOCOLOR}"
-fi
+# uwsm is now in official repositories, so its service enablement should not depend on AUR status.
+# It should be enabled if the package was successfully installed via pacman.
+# We'll assume successful installation if pacman -S did not return a critical error.
+execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true" # Made skippable for robustness, as service might fail if uwsm wasn't installed for other reasons
 
 
 # ---------------------------------------------------
