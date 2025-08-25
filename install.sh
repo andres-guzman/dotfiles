@@ -152,36 +152,34 @@ arch-chroot /mnt << EOF
     pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo -e "${RED}Error: Failed to install core audio and zsh packages.${NOCOLOR}"; exit 1; }
 
     # Enable multilib repository
-    sed -i "/\[multilib\]/,/Include/"'s/^#//' /etc/pacman.conf || { echo -e "${RED}Error: Failed to enable multilib repository in pacman.conf.${NOCOLOR}"; exit 1; }
+    # Using a more robust sed command and ensuring pacman -Syy follows.
+    sed -i '/\[multilib\]/{N;s/#\[multilib\]\n#Include = \/etc\/pacman.d\/mirrorlist/\[multilib\]\nInclude = \/etc\/pacman.d\/mirrorlist/}' /etc/pacman.conf || { echo -e "${RED}Error: Failed to enable multilib repository in pacman.conf.${NOCOLOR}"; exit 1; }
     pacman -Syy || { echo -e "${RED}Error: Failed to synchronize package databases after enabling multilib.${NOCOLOR}"; exit 1; } # Force sync after enabling multilib
 
     # Step 4-D: Bootloader Configuration
     echo -e "${YELLOW}Configuring systemd-boot...${NOCOLOR}"
-    # Ensure ownership for writing to /boot, especially if systemd-boot touches it.
-    chown -R andres:andres /boot || { echo -e "${RED}Error: Failed to change ownership of /boot to 'andres'. This might cause bootloader config issues.${NOCOLOR}"; exit 1; }
+    # Removed chown for /boot as FAT32 does not support Linux permissions.
     bootctl install || { echo -e "${RED}Error: Failed to install systemd-boot.${NOCOLOR}"; exit 1; }
 
     TODAY=$(date +%Y-%m-%d)
 
-    # Use sudo -u andres for echo commands to write to /boot/loader/
-    sudo -u andres bash << EOL_BOOT_CONF
-        echo "default ${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo -e "${RED}Error: Failed to create loader.conf.${NOCOLOR}"; exit 1; }
-        echo "timeout  0" >> /boot/loader/loader.conf
-        echo "console-mode max" >> /boot/loader/loader.conf
-        echo "editor   no" >> /boot/loader/loader.conf
+    # All echo commands for boot entries must run as root (default in arch-chroot).
+    echo "default ${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo -e "${RED}Error: Failed to create loader.conf.${NOCOLOR}"; exit 1; }
+    echo "timeout  0" >> /boot/loader/loader.conf
+    echo "console-mode max" >> /boot/loader/loader.conf
+    echo "editor   no" >> /boot/loader/loader.conf
 
-        echo "title    Arch Linux Zen" > "/boot/loader/entries/${TODAY}_linux-zen.conf" || { echo -e "${RED}Error: Failed to create linux-zen boot entry.${NOCOLOR}"; exit 1; }
-        echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-        echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-        echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-        echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
+    echo "title    Arch Linux Zen" > "/boot/loader/entries/${TODAY}_linux-zen.conf" || { echo -e "${RED}Error: Failed to create linux-zen boot entry.${NOCOLOR}"; exit 1; }
+    echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
+    echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
+    echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
 
-        echo "title    Arch Linux" > "/boot/loader/entries/${TODAY}_linux.conf" || { echo -e "${RED}Error: Failed to create linux boot entry.${NOCOLOR}"; exit 1; }
-        echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/${TODAY}_linux.conf"
-        echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
-        echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
-        echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux.conf"
-    EOL_BOOT_CONF
+    echo "title    Arch Linux" > "/boot/loader/entries/${TODAY}_linux.conf" || { echo -e "${RED}Error: Failed to create linux boot entry.${NOCOLOR}"; exit 1; }
+    echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/${TODAY}_linux.conf"
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
+    echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
+    echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux.conf"
     
     # Step 4-E: Enable getty service for auto-login (uwsm will be enabled later)
     systemctl enable getty@tty1.service || { echo -e "${RED}Error: Failed to enable getty service.${NOCOLOR}"; exit 1; }
