@@ -63,10 +63,9 @@ mkdir -p /mnt/boot || { echo -e "${RED}Error: Failed to create /mnt/boot directo
 mount "${DRIVE}p1" /mnt/boot || { echo -e "${RED}Error: Failed to mount EFI partition.${NOCOLOR}"; exit 1; }
 
 # Step 2-B: Install the base system and essential packages
-# Removed 'systemd-boot' from pacstrap as it's not a package itself.
-# 'bootctl' (for systemd-boot) is part of 'systemd' which comes with 'base'.
-echo -e "${YELLOW}Installing base system with pacstrap...${NOCOLOR}"
-pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr || { echo -e "${RED}Error: Failed to pacstrap base system.${NOCOLOR}"; exit 1; }
+# Adding verbose output for pacstrap to a log file on the NVMe.
+echo -e "${YELLOW}Installing base system with pacstrap (output to /mnt/pacstrap.log)...${NOCOLOR}"
+pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log || { echo -e "${RED}Error: Failed to pacstrap base system. Check /mnt/pacstrap.log for details.${NOCOLOR}"; exit 1; }
 
 # Step 2-C: Generate fstab
 echo -e "${YELLOW}Generating fstab...${NOCOLOR}"
@@ -79,7 +78,6 @@ echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
 # Explicitly create /mnt/home/andres before creating the temporary directory
-# This ensures the parent path exists with proper root ownership for mkdir -p.
 mkdir -p /mnt/home/andres || { echo -e "${RED}Error: Failed to create /mnt/home/andres directory on NVMe.${NOCOLOR}"; exit 1; }
 
 # Create a temporary directory on the NVme disk for fetching dotfiles
@@ -119,71 +117,79 @@ echo -e "${GREEN}pkg_aur.txt downloaded successfully.${NOCOLOR}"
 echo -e "${CYAN}--- Step 4: System Configuration (Inside chroot) ---${NOCOLOR}"
 echo -e "${YELLOW}Entering chroot environment to configure the system...${NOCOLOR}"
 
-arch-chroot /mnt << EOF
+# Explicitly use /bin/sh for the chroot shell to avoid bash-specific issues
+arch-chroot /mnt /bin/sh << EOF_CHROOT_SCRIPT
+    # Ensure a basic PATH is set for sh
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
     # Step 4-A: Time, Locale, and Hostname
-    echo -e "${YELLOW}Configuring time, locale, and hostname...${NOCOLOR}"
-    ln -sf /usr/share/zoneinfo/America/La_Paz /etc/localtime || { echo -e "${RED}Error: Failed to set timezone.${NOCOLOR}"; exit 1; }
-    hwclock --systohc || { echo -e "${RED}Error: Failed to set hardware clock.${NOCOLOR}"; exit 1; }
+    echo "Configuring time, locale, and hostname..."
+    ln -sf /usr/share/zoneinfo/America/La_Paz /etc/localtime || { echo "Error: Failed to set timezone."; exit 1; }
+    hwclock --systohc || { echo "Error: Failed to set hardware clock."; exit 1; }
 
     # Set keyboard layout
-    echo "KEYMAP=la-latin1" > /etc/vconsole.conf || { echo -e "${RED}Error: Failed to set keyboard layout.${NOCOLOR}"; exit 1; }
+    echo "KEYMAP=la-latin1" > /etc/vconsole.conf || { echo "Error: Failed to set keyboard layout."; exit 1; }
 
-    sed -i 's/#en_CA.UTF-8 UTF-8/en_CA.UTF-8 UTF-8/' /etc/locale.gen || { echo -e "${RED}Error: Failed to uncomment en_CA locale.${NOCOLOR}"; exit 1; }
-    sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen || { echo -e "${RED}Error: Failed to uncomment en_US locale.${NOCOLOR}"; exit 1; }
-    sed -i 's/#es_BO.UTF-8 UTF-8/es_BO.UTF-8 UTF-8/' /etc/locale.gen || { echo -e "${RED}Error: Failed to uncomment es_BO locale.${NOCOLOR}"; exit 1; }
-    locale-gen || { echo -e "${RED}Error: Failed to generate locales.${NOCOLOR}"; exit 1; }
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf || { echo -e "${RED}Error: Failed to set LANG in locale.conf.${NOCOLOR}"; exit 1; }
+    # Robust sed for locale.gen
+    sed -i '/#en_CA.UTF-8 UTF-8/s/^#//' /etc/locale.gen || { echo "Error: Failed to uncomment en_CA locale."; exit 1; }
+    sed -i '/#en_US.UTF-8 UTF-8/s/^#//' /etc/locale.gen || { echo "Error: Failed to uncomment en_US locale."; exit 1; }
+    sed -i '/#es_BO.UTF-8 UTF-8/s/^#//' /etc/locale.gen || { echo "Error: Failed to uncomment es_BO locale."; exit 1; }
+    locale-gen || { echo "Error: Failed to generate locales."; exit 1; }
+    echo "LANG=en_US.UTF-8" > /etc/locale.conf || { echo "Error: Failed to set LANG in locale.conf."; exit 1; }
 
-    echo "archlinux" > /etc/hostname || { echo -e "${RED}Error: Failed to set hostname.${NOCOLOR}"; exit 1; }
+    echo "archlinux" > /etc/hostname || { echo "Error: Failed to set hostname."; exit 1; }
     echo "127.0.0.1   localhost" >> /etc/hosts
     echo "::1         localhost" >> /etc/hosts
     echo "127.0.1.1   archlinux.localdomain archlinux" >> /etc/hosts
 
     # Step 4-B: User and Sudo Configuration
-    echo -e "${YELLOW}Creating user 'andres' and configuring sudo...${NOCOLOR}"
-    useradd -m andres || { echo -e "${RED}Error: Failed to create user 'andres'.${NOCOLOR}"; exit 1; }
-    echo "andres:password" | chpasswd || { echo -e "${RED}Error: Failed to set password for 'andres'.${NOCOLOR}"; exit 1; } # REMEMBER TO CHANGE PASSWORD
-    usermod -aG wheel andres || { echo -e "${RED}Error: Failed to add 'andres' to wheel group.${NOCOLOR}"; exit 1; }
-    sed -i 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers || { echo -e "${RED}Error: Failed to uncomment wheel group in sudoers.${NOCOLOR}"; exit 1; }
+    echo "Creating user 'andres' and configuring sudo..."
+    useradd -m andres || { echo "Error: Failed to create user 'andres'."; exit 1; }
+    echo "andres:password" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # REMEMBER TO CHANGE PASSWORD
+    usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
+    # Robust sed for sudoers
+    sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers || { echo "Error: Failed to uncomment wheel group in sudoers."; exit 1; }
 
     # Step 4-C: Install Kernels and other core packages & Enable multilib
-    echo -e "${YELLOW}Installing Zen and Stable kernels, microcode, core utilities, and enabling multilib...${NOCOLOR}"
-    pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode || { echo -e "${RED}Error: Failed to install kernels and microcode.${NOCOLOR}"; exit 1; }
-    pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo -e "${RED}Error: Failed to install core audio and zsh packages.${NOCOLOR}"; exit 1; }
+    echo "Installing Zen and Stable kernels, microcode, core utilities, and enabling multilib..."
+    pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode || { echo "Error: Failed to install kernels and microcode."; exit 1; }
+    pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo "Error: Failed to install core audio and zsh packages."; exit 1; }
 
     # Enable multilib repository
-    # Using a more robust sed command and ensuring pacman -Syy follows.
-    sed -i '/\[multilib\]/{N;s/#\[multilib\]\n#Include = \/etc\/pacman.d\/mirrorlist/\[multilib\]\nInclude = \/etc\/pacman.d\/mirrorlist/}' /etc/pacman.conf || { echo -e "${RED}Error: Failed to enable multilib repository in pacman.conf.${NOCOLOR}"; exit 1; }
-    pacman -Syy || { echo -e "${RED}Error: Failed to synchronize package databases after enabling multilib.${NOCOLOR}"; exit 1; } # Force sync after enabling multilib
+    # Using a simpler sed command to uncomment [multilib] and its Include line.
+    # This assumes the Include line is immediately after [multilib].
+    sed -i '/\[multilib\]/{n;s/^#//}' /etc/pacman.conf || { echo "Error: Failed to uncomment multilib section (Include line) in pacman.conf."; exit 1; }
+    sed -i '/\[multilib\]/s/^#//' /etc/pacman.conf || { echo "Error: Failed to uncomment [multilib] header in pacman.conf."; exit 1; }
+    pacman -Syy || { echo "Error: Failed to synchronize package databases after enabling multilib."; exit 1; } # Force sync after enabling multilib
 
     # Step 4-D: Bootloader Configuration
-    echo -e "${YELLOW}Configuring systemd-boot...${NOCOLOR}"
+    echo "Configuring systemd-boot..."
     # Removed chown for /boot as FAT32 does not support Linux permissions.
-    bootctl install || { echo -e "${RED}Error: Failed to install systemd-boot.${NOCOLOR}"; exit 1; }
+    bootctl install || { echo "Error: Failed to install systemd-boot."; exit 1; }
 
-    TODAY=$(date +%Y-%m-%d)
+    TODAY=\$(date +%Y-%m-%d) # Escaped for the inner shell
 
     # All echo commands for boot entries must run as root (default in arch-chroot).
-    echo "default ${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo -e "${RED}Error: Failed to create loader.conf.${NOCOLOR}"; exit 1; }
+    echo "default \${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo "Error: Failed to create loader.conf."; exit 1; }
     echo "timeout  0" >> /boot/loader/loader.conf
     echo "console-mode max" >> /boot/loader/loader.conf
     echo "editor   no" >> /boot/loader/loader.conf
 
-    echo "title    Arch Linux Zen" > "/boot/loader/entries/${TODAY}_linux-zen.conf" || { echo -e "${RED}Error: Failed to create linux-zen boot entry.${NOCOLOR}"; exit 1; }
-    echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-    echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-    echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
+    echo "title    Arch Linux Zen" > "/boot/loader/entries/\${TODAY}_linux-zen.conf" || { echo "Error: Failed to create linux-zen boot entry."; exit 1; }
+    echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
+    echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
+    echo "options  root=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
 
-    echo "title    Arch Linux" > "/boot/loader/entries/${TODAY}_linux.conf" || { echo -e "${RED}Error: Failed to create linux boot entry.${NOCOLOR}"; exit 1; }
-    echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/${TODAY}_linux.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
-    echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
-    echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux.conf"
+    echo "title    Arch Linux" > "/boot/loader/entries/\${TODAY}_linux.conf" || { echo "Error: Failed to create linux boot entry."; exit 1; }
+    echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/\${TODAY}_linux.conf"
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux.conf"
+    echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/\${TODAY}_linux.conf"
+    echo "options  root=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/\${TODAY}_linux.conf"
     
     # Step 4-E: Enable getty service for auto-login (uwsm will be enabled later)
-    systemctl enable getty@tty1.service || { echo -e "${RED}Error: Failed to enable getty service.${NOCOLOR}"; exit 1; }
-EOF
+    systemctl enable getty@tty1.service || { echo "Error: Failed to enable getty service."; exit 1; }
+EOF_CHROOT_SCRIPT
 
 echo -e "${YELLOW}Exiting chroot environment...${NOCOLOR}"
 
@@ -222,17 +228,17 @@ arch-chroot /mnt pacman -Syu --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_offici
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
 # Clone yay-bin and build as the 'andres' user in the new root
 arch-chroot /mnt bash << EOL
-    git clone https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin || { echo -e "${RED}Error: Failed to clone yay-bin inside chroot.${NOCOLOR}"; exit 1; }
-    chown -R andres:andres /home/andres/yay-bin || { echo -e "${RED}Error: Failed to change ownership of yay-bin inside chroot.${NOCOLOR}"; exit 1; }
+    git clone https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin || { echo "Error: Failed to clone yay-bin inside chroot."; exit 1; }
+    chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     # Run makepkg as the 'andres' user
-    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo -e "${RED}Error: Failed to build and install yay inside chroot.${NOCOLOR}"; exit 1; }
+    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay inside chroot."; exit 1; }
 EOL
 
 # Step 6-C: Install AUR Packages with Yay
 echo -e "${YELLOW}Installing AUR packages from pkg_aur.txt...${NOCOLOR}"
 # Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
 arch-chroot /mnt sudo -u andres bash << EOL
-    yay -S --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" || { echo -e "${RED}Error: Failed to install AUR packages inside chroot.${NOCOLOR}"; exit 1; }
+    yay -S --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" || { echo "Error: Failed to install AUR packages inside chroot."; exit 1; }
 EOL
 
 # ---------------------------------------------------
@@ -243,14 +249,14 @@ echo -e "${YELLOW}Setting up bare dotfiles repository and restoring configuratio
 # This step initializes the bare repository in the new system's home directory
 arch-chroot /mnt bash << EOL
     # Initialize the bare repository
-    git init --bare "$DOTFILES_BARE_DIR" || { echo -e "${RED}Error: Failed to initialize bare dotfiles repository.${NOCOLOR}"; exit 1; }
+    git init --bare "$DOTFILES_BARE_DIR" || { echo "Error: Failed to initialize bare dotfiles repository."; exit 1; }
     # Configure git to use the bare repo for dotfile management
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo -e "${RED}Error: Failed to configure git for dotfiles.${NOCOLOR}"; exit 1; }
+    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo "Error: Failed to configure git for dotfiles."; exit 1; }
     # The 'checkout' step will now clone from the remote repo directly to the user's home
     # as we no longer have a local full clone in /mnt/home/andres/
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres remote add origin "$REPO_URL" || { echo -e "${RED}Error: Failed to add origin remote to bare dotfiles repo.${NOCOLOR}"; exit 1; }
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres fetch origin main || { echo -e "${RED}Error: Failed to fetch from origin remote.${NOCOLOR}"; exit 1; }
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres checkout --force main || { echo -e "${RED}Error: Failed to checkout main branch from bare dotfiles repo.${NOCOLOR}"; exit 1; }
+    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres remote add origin "$REPO_URL" || { echo "Error: Failed to add origin remote to bare dotfiles repo."; exit 1; }
+    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres fetch origin main || { echo "Error: Failed to fetch from origin remote."; exit 1; }
+    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres checkout --force main || { echo "Error: Failed to checkout main branch from bare dotfiles repo."; exit 1; }
 EOL
 
 # Assuming user's dotfiles repo structure is mostly flat or directly maps to $HOME/.config etc.
@@ -259,19 +265,19 @@ arch-chroot /mnt bash << EOL
     # Move fonts to ~/.local/share/fonts (if they were at the root of your dotfiles repo)
     if [ -d "/home/andres/fonts" ]; then
         mkdir -p /home/andres/.local/share/fonts
-        mv /home/andres/fonts/* /home/andres/.local/share/fonts/ || { echo -e "${RED}Error: Failed to move fonts.${NOCOLOR}"; exit 1; }
+        mv /home/andres/fonts/* /home/andres/.local/share/fonts/ || { echo "Error: Failed to move fonts."; exit 1; }
         rmdir /home/andres/fonts
     fi
     # Move themes to ~/.local/share/themes (if they were at the root of your dotfiles repo)
     if [ -d "/home/andres/themes" ]; then
         mkdir -p /home/andres/.local/share/themes
-        mv /home/andres/themes/* /home/andres/.local/share/themes/ || { echo -e "${RED}Error: Failed to move themes.${NOCOLOR}"; exit 1; }
+        mv /home/andres/themes/* /home/andres/.local/share/themes/ || { echo "Error: Failed to move themes."; exit 1; }
         rmdir /home/andres/themes
     fi
     # Move systemd user services to ~/.config/systemd/user (if they were at the root of your dotfiles repo)
     if [ -d "/home/andres/systemd" ]; then
         mkdir -p /home/andres/.config/systemd/user
-        mv /home/andres/systemd/* /home/andres/.config/systemd/user/ || { echo -e "${RED}Error: Failed to move systemd user services.${NOCOLOR}"; exit 1; }
+        mv /home/andres/systemd/* /home/andres/.config/systemd/user/ || { echo "Error: Failed to move systemd user services."; exit 1; }
         rmdir /home/andres/systemd
     fi
 EOL
@@ -284,10 +290,10 @@ echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Act
 echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOCOLOR}"
 
 # Set default shell to Zsh for user 'andres'
-arch-chroot /mnt usermod --shell /usr/bin/zsh andres || { echo -e "${RED}Error: Failed to set default shell for 'andres' to zsh.${NOCOLOR}"; exit 1; }
+arch-chroot /mnt usermod --shell /usr/bin/zsh andres || { echo "Error: Failed to set default shell for 'andres' to zsh."; exit 1; }
 
 # Enable uwsm service for user 'andres'
-arch-chroot /mnt systemctl enable uwsm@andres.service || { echo -e "${RED}Error: Failed to enable uwsm service.${NOCOLOR}"; exit 1; }
+arch-chroot /mnt systemctl enable uwsm@andres.service || { echo "Error: Failed to enable uwsm service."; exit 1; }
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
@@ -296,7 +302,7 @@ echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
 echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
 
 # Clean up the temporary dotfiles directory from NVMe
-rm -rf "$DOTFILES_TEMP_NVME_DIR" || { echo -e "${RED}Warning: Failed to remove temporary dotfiles directory from NVMe. Please clean up manually.${NOCOLOR}"; }
+rm -rf "$DOTFILES_TEMP_NVME_DIR" || { echo "${RED}Warning: Failed to remove temporary dotfiles directory from NVMe. Please clean up manually.${NOCOLOR}"; }
 
-umount -R /mnt || { echo -e "${RED}Error: Failed to unmount /mnt. Please unmount manually.${NOCOLOR}"; exit 1; }
+umount -R /mnt || { echo "${RED}Error: Failed to unmount /mnt. Please unmount manually.${NOCOLOR}"; exit 1; }
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
