@@ -11,13 +11,8 @@ slurp
 satty
 cliphist
 hyprsunset
-pipewire
-pipewire-pulse
-wireplumber
 pavucontrol
 pamixer
-networkmanager
-network-manager-applet
 bluez
 bluez-utils
 blueman
@@ -49,7 +44,6 @@ kvantum
 kvantum-qt5
 qt5-wayland
 qt6-wayland
-nano
 firefox-developer-edition
 kitty
 ark
@@ -115,7 +109,6 @@ python-pipx
 python-pycountry
 python-pytz
 python-requests
-zsh
 starship
 fastfetch
 steam
