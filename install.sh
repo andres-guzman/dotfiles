@@ -141,6 +141,10 @@ execute_command "Mount Root partition" "mount \"${DRIVE}p3\" /mnt" "false"
 execute_command "Create /mnt/boot directory" "mkdir -p /mnt/boot" "false"
 execute_command "Mount EFI partition" "mount \"${DRIVE}p1\" /mnt/boot" "false"
 
+# --- NEW: Copy host resolv.conf into chroot for DNS resolution ---
+echo -e "${YELLOW}Copying /etc/resolv.conf from live environment to /mnt/etc/resolv.conf for DNS resolution in chroot...${NOCOLOR}"
+execute_command "Copy /etc/resolv.conf" "cp /etc/resolv.conf /mnt/etc/resolv.conf" "false"
+
 # Install terminus-font and set console font for the live environment (EARLIEST POSSIBLE)
 echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
 execute_command "Install terminus-font in live environment" "pacman -Sy --noconfirm terminus-font" "true"
@@ -303,7 +307,7 @@ if arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1; then
     UWSM_INSTALLED=true
 else
     echo -e "${RED}Error: 'uwsm' package does not appear to be installed via pacman -Q, despite being in pkg_official.txt.${NOCOLOR}"
-    echo -e "${YELLOW}This indicates a problem during the 'Install official packages' step or a missing dependency.${NOCOLOR}"
+    echo -e "${YELLOW}This might indicate a problem during the 'Install official packages' step or a missing dependency.${NOCOLOR}"
     
     # Try forceful reinstallation directly here, as base-devel should now be present
     echo -e "${YELLOW}Attempting forceful reinstallation of 'uwsm' to resolve.${NOCOLOR}"
@@ -337,7 +341,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
-        # Corrected AUR URL from .com to .org
+        # Corrected AUR URL to .org
         if git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
             YAY_CLONE_SUCCESS=true
             echo "SUCCESS: Cloned yay-bin from AUR."
