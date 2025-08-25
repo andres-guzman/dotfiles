@@ -20,36 +20,98 @@ DOTFILES_BARE_DIR="/home/andres/dotfiles"
 PKG_OFFICIAL_URL="https://raw.githubusercontent.com/andres-guzman/dotfiles/main/pkg_official.txt"
 PKG_AUR_URL="https://raw.githubusercontent.com/andres-guzman/dotfiles/main/pkg_aur.txt"
 
-# IMPORTANT: This script assumes it is downloaded as a single file to a location
-# on the RAM disk (e.g., /root/install.sh) and executed from there.
-# It will then fetch pkg_official.txt and pkg_aur.txt directly to the NVMe disk.
+# --- New: Interactive Error Handler Function ---
+# This function offers retry/skip/quit options upon command failure.
+# Arguments:
+#   1: Description of the command that failed (for display)
+#   2: The actual command string that failed (for display)
+#   3: "true" if the step can be skipped, "false" if critical (only retry/quit)
+handle_failure() {
+    local cmd_description="$1"
+    local failed_command="$2"
+    local skippable="$3"
+
+    echo -e "${RED}Error: ${cmd_description} failed!${NOCOLOR}"
+    echo -e "${YELLOW}Failed command: ${failed_command}${NOCOLOR}"
+
+    while true; do
+        if [[ "$skippable" == "true" ]]; then
+            echo -e "${YELLOW}Options: (r)etry, (s)kip this step, (q)uit installation.${NOCOLOR}"
+        else
+            echo -e "${YELLOW}This step is critical and cannot be skipped. Options: (r)etry, (q)uit installation.${NOCOLOR}"
+        fi
+        
+        read -r -p "Enter your choice: " choice
+        case "$choice" in
+            r|R)
+                echo -e "${YELLOW}Retrying '${cmd_description}'...${NOCOLOR}"
+                return 0 # Indicate retry
+                ;;
+            s|S)
+                if [[ "$skippable" == "true" ]]; then
+                    echo -e "${YELLOW}Skipping '${cmd_description}'.${NOCOLOR}"
+                    return 1 # Indicate skip
+                else
+                    echo -e "${RED}Invalid choice. This critical step cannot be skipped.${NOCOLOR}"
+                fi
+                ;;
+            q|Q)
+                echo -e "${RED}Quitting installation as requested.${NOCOLOR}"
+                exit 1
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter 'r', 's', or 'q'.${NOCOLOR}"
+                ;;
+        esac
+    done
+}
+
+# --- Wrapper function to execute commands with error handling ---
+execute_command() {
+    local cmd_description="$1"
+    local command_to_execute="$2"
+    local skippable="$3" # "true" or "false"
+
+    while true; do
+        if eval "$command_to_execute"; then
+            echo -e "${GREEN}SUCCESS: ${cmd_description}${NOCOLOR}"
+            return 0 # Command succeeded
+        else
+            if handle_failure "$cmd_description" "$command_to_execute" "$skippable"; then
+                # User chose to retry, so loop continues
+                continue
+            else
+                # User chose to skip or quit
+                if [[ "$skippable" == "true" ]]; then
+                    return 1 # Indicate skip
+                else
+                    echo -e "${RED}Critical command '${cmd_description}' failed and cannot be skipped. Exiting.${NOCOLOR}"
+                    exit 1
+                fi
+            fi
+        fi
+    done
+}
+
 
 # ---------------------------------------------------
 # Step 1: Disk Partitioning and Formatting
 # ---------------------------------------------------
-# Set the device variable for clarity.
-# WARNING: This is a destructive operation on this device.
-DRIVE="/dev/nvme0n1"
-
 echo -e "${CYAN}--- Step 1: Disk Partitioning and Formatting ---${NOCOLOR}"
 echo -e "${YELLOW}Partitioning and formatting the drive: ${DRIVE}...${NOCOLOR}"
 
 # Step 1-A: Partition the disk
-# Create a new GPT partition table
-parted -s "$DRIVE" mklabel gpt || { echo -e "${RED}Error: Failed to create GPT label on ${DRIVE}.${NOCOLOR}"; exit 1; }
-# Create the EFI partition (1G)
-parted -s "$DRIVE" mkpart primary fat32 1MiB 1025MiB || { echo -e "${RED}Error: Failed to create EFI partition.${NOCOLOR}"; exit 1; }
-parted -s "$DRIVE" set 1 esp on || { echo -e "${RED}Error: Failed to set ESP flag on EFI partition.${NOCOLOR}"; exit 1; }
-# Create the Swap partition (8G)
-parted -s "$DRIVE" mkpart primary linux-swap 1025MiB 9249MiB || { echo -e "${RED}Error: Failed to create Swap partition.${NOCOLOR}"; exit 1; }
-# Create the Root partition (the rest of the drive)
-parted -s "$DRIVE" mkpart primary ext4 9249MiB 100% || { echo -e "${RED}Error: Failed to create Root partition.${NOCOLOR}"; exit 1; }
+execute_command "Create GPT label on ${DRIVE}" "parted -s \"$DRIVE\" mklabel gpt" "false"
+execute_command "Create EFI partition" "parted -s \"$DRIVE\" mkpart primary fat32 1MiB 1025MiB" "false"
+execute_command "Set ESP flag on EFI partition" "parted -s \"$DRIVE\" set 1 esp on" "false"
+execute_command "Create Swap partition" "parted -s \"$DRIVE\" mkpart primary linux-swap 1025MiB 9249MiB" "false"
+execute_command "Create Root partition" "parted -s \"$DRIVE\" mkpart primary ext4 9249MiB 100%" "false"
 
 # Step 1-B: Format the partitions
-mkfs.fat -F32 "${DRIVE}p1" || { echo -e "${RED}Error: Failed to format EFI partition.${NOCOLOR}"; exit 1; } # EFI
-mkswap "${DRIVE}p2" || { echo -e "${RED}Error: Failed to format Swap partition.${NOCOLOR}"; exit 1; }        # Swap
-mkfs.ext4 "${DRIVE}p3" || { echo -e "${RED}Error: Failed to format Root partition.${NOCOLOR}"; exit 1; }     # Root
-swapon "${DRIVE}p2" || { echo -e "${RED}Error: Failed to enable Swap.${NOCOLOR}"; exit 1; }
+execute_command "Format EFI partition" "mkfs.fat -F32 \"${DRIVE}p1\"" "false"
+execute_command "Format Swap partition" "mkswap \"${DRIVE}p2\"" "false"
+execute_command "Format Root partition" "mkfs.ext4 \"${DRIVE}p3\"" "false"
+execute_command "Enable Swap" "swapon \"${DRIVE}p2\"" "false"
 
 # ---------------------------------------------------
 # Step 2: Base System Installation
@@ -58,25 +120,22 @@ echo -e "${CYAN}--- Step 2: Base System Installation ---${NOCOLOR}"
 echo -e "${YELLOW}Mounting partitions and installing base system...${NOCOLOR}"
 
 # Step 2-A: Mount partitions
-mount "${DRIVE}p3" /mnt || { echo -e "${RED}Error: Failed to mount Root partition.${NOCOLOR}"; exit 1; }
-mkdir -p /mnt/boot || { echo -e "${RED}Error: Failed to create /mnt/boot directory.${NOCOLOR}"; exit 1; }
-mount "${DRIVE}p1" /mnt/boot || { echo -e "${RED}Error: Failed to mount EFI partition.${NOCOLOR}"; exit 1; }
+execute_command "Mount Root partition" "mount \"${DRIVE}p3\" /mnt" "false"
+execute_command "Create /mnt/boot directory" "mkdir -p /mnt/boot" "false"
+execute_command "Mount EFI partition" "mount \"${DRIVE}p1\" /mnt/boot" "false"
 
 # Install terminus-font and set console font for the live environment (EARLIEST POSSIBLE)
 echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
-# This pacman call will now be after the keyring reset in Step 0
-pacman -Sy --noconfirm terminus-font || { echo -e "${RED}Error: Failed to install terminus-font in live environment.${NOCOLOR}"; exit 1; }
+execute_command "Install terminus-font in live environment" "pacman -Sy --noconfirm terminus-font" "true"
 echo -e "${YELLOW}Setting console font to ter-v16n...${NOCOLOR}"
-setfont ter-v16n || { echo -e "${RED}Error: Failed to set console font in live environment.${NOCOLOR}"; exit 1; }
+execute_command "Set console font in live environment" "setfont ter-v16n" "true"
 
 # Step 2-B: Install the base system and essential packages
-# Adding verbose output for pacstrap to a log file on the NVMe.
 echo -e "${YELLOW}Installing base system with pacstrap (output to /mnt/pacstrap.log)...${NOCOLOR}"
-pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log || { echo -e "${RED}Error: Failed to pacstrap base system. Check /mnt/pacstrap.log for details.${NOCOLOR}"; exit 1; }
+execute_command "Pacstrap base system" "pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log" "false"
 
 # Step 2-C: Generate fstab
-echo -e "${YELLOW}Generating fstab...${NOCOLOR}"
-genfstab -U /mnt >> /mnt/etc/fstab || { echo -e "${RED}Error: Failed to generate fstab.${NOCOLOR}"; exit 1; }
+execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
 
 
 # ---------------------------------------------------
@@ -85,38 +144,18 @@ genfstab -U /mnt >> /mnt/etc/fstab || { echo -e "${RED}Error: Failed to generate
 echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
-# Explicitly create /mnt/home/andres before creating the temporary directory
-mkdir -p /mnt/home/andres || { echo -e "${RED}Error: Failed to create /mnt/home/andres directory on NVMe.${NOCOLOR}"; exit 1; }
-
-# Create a temporary directory on the NVme disk for fetching dotfiles
-DOTFILES_TEMP_NVME_DIR="/mnt/home/andres/temp_dotfiles_setup"
-mkdir -p "$DOTFILES_TEMP_NVME_DIR" || { echo -e "${RED}Error: Failed to create temporary dotfiles directory on NVMe: $DOTFILES_TEMP_NVME_DIR.${NOCOLOR}"; exit 1; }
+execute_command "Create /mnt/home/andres directory" "mkdir -p /mnt/home/andres" "false"
+execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p \"$DOTFILES_TEMP_NVME_DIR\"" "false"
 
 # Download pkg_official.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_official.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-curl -f -o "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" "$PKG_OFFICIAL_URL" || { 
-    echo -e "${RED}Error: Failed to download pkg_official.txt to NVMe. Check URL: $PKG_OFFICIAL_URL and network connectivity.${NOCOLOR}"; 
-    exit 1; 
-}
-# Verify download immediately
-if [ ! -f "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" ]; then
-    echo -e "${RED}Error: pkg_official.txt was not found after download attempt in ${DOTFILES_TEMP_NVME_DIR}. Download failed silently.${NOCOLOR}"; 
-    exit 1;
-fi
-echo -e "${GREEN}pkg_official.txt downloaded successfully.${NOCOLOR}"
+execute_command "Download pkg_official.txt" "curl -f -o \"$DOTFILES_TEMP_NVME_DIR/pkg_official.txt\" \"$PKG_OFFICIAL_URL\"" "false"
+execute_command "Verify pkg_official.txt download" "[ ! -f \"$DOTFILES_TEMP_NVME_DIR/pkg_official.txt\" ] && exit 1" "false"
 
 # Download pkg_aur.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-curl -f -o "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" "$PKG_AUR_URL" || { 
-    echo -e "${RED}Error: Failed to download pkg_aur.txt to NVMe. Check URL: $PKG_AUR_URL and network connectivity.${NOCOLOR}"; 
-    exit 1; 
-}
-# Verify download immediately
-if [ ! -f "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" ]; then
-    echo -e "${RED}Error: pkg_aur.txt was not found after download attempt in ${DOTFILES_TEMP_NVME_DIR}. Download failed silently.${NOCOLOR}"; 
-    exit 1;
-fi
-echo -e "${GREEN}pkg_aur.txt downloaded successfully.${NOCOLOR}"
+execute_command "Download pkg_aur.txt" "curl -f -o \"$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt\" \"$PKG_AUR_URL\"" "false"
+execute_command "Verify pkg_aur.txt download" "[ ! -f \"$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt\" ] && exit 1" "false"
 
 
 # ---------------------------------------------------
@@ -126,76 +165,134 @@ echo -e "${CYAN}--- Step 4: System Configuration (Inside chroot) ---${NOCOLOR}"
 echo -e "${YELLOW}Entering chroot environment to configure the system...${NOCOLOR}"
 
 # Explicitly use /bin/sh for the chroot shell to avoid bash-specific issues
-arch-chroot /mnt /bin/sh << EOF_CHROOT_SCRIPT
+arch-chroot /mnt /bin/sh << 'EOF_CHROOT_SCRIPT' # Use single quotes to prevent variable expansion now
     # Ensure a basic PATH is set for sh
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+    # --- New: Interactive Error Handler Function (inside chroot) ---
+    handle_failure_chroot() {
+        local cmd_description="$1"
+        local failed_command="$2"
+        local skippable="$3"
+
+        echo "Error: $cmd_description failed!"
+        echo "Failed command: $failed_command"
+
+        while true; do
+            if [ "$skippable" = "true" ]; then
+                echo "Options: (r)etry, (s)kip this step, (q)uit installation."
+            else
+                echo "This step is critical and cannot be skipped. Options: (r)etry, (q)uit installation."
+            fi
+            
+            read -r -p "Enter your choice: " choice
+            case "$choice" in
+                r|R)
+                    echo "Retrying '$cmd_description'..."
+                    return 0 # Indicate retry
+                    ;;
+                s|S)
+                    if [ "$skippable" = "true" ]; then
+                        echo "Skipping '$cmd_description'."
+                        return 1 # Indicate skip
+                    else
+                        echo "Invalid choice. This critical step cannot be skipped."
+                    fi
+                    ;;
+                q|Q)
+                    echo "Quitting installation as requested."
+                    exit 1
+                    ;;
+                *)
+                    echo "Invalid choice. Please enter 'r', 's', or 'q'."
+                    ;;
+            esac
+        done
+    }
+
+    execute_command_chroot() {
+        local cmd_description="$1"
+        local command_to_execute="$2"
+        local skippable="$3"
+
+        while true; do
+            if eval "$command_to_execute"; then
+                echo "SUCCESS: $cmd_description"
+                return 0
+            else
+                if handle_failure_chroot "$cmd_description" "$command_to_execute" "$skippable"; then
+                    continue
+                else
+                    if [ "$skippable" = "true" ]; then
+                        return 1
+                    else
+                        echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
+                        exit 1
+                    fi
+                fi
+            fi
+        done
+    }
+
+
     # Step 4-A: Time, Locale, and Hostname
     echo "Configuring time, locale, and hostname..."
-    ln -sf /usr/share/zoneinfo/America/La_Paz /etc/localtime || { echo "Error: Failed to set timezone."; exit 1; }
-    hwclock --systohc || { echo "Error: Failed to set hardware clock."; exit 1; }
+    execute_command_chroot "Set timezone" "ln -sf /usr/share/zoneinfo/America/La_Paz /etc/localtime" "false"
+    execute_command_chroot "Set hardware clock" "hwclock --systohc" "false"
+    execute_command_chroot "Set keyboard layout" "echo \"KEYMAP=la-latin1\" > /etc/vconsole.conf" "false"
 
-    # Set keyboard layout
-    echo "KEYMAP=la-latin1" > /etc/vconsole.conf || { echo "Error: Failed to set keyboard layout."; exit 1; }
+    execute_command_chroot "Uncomment en_CA locale" "sed -i '/#en_CA.UTF-8 UTF-8/s/^#//' /etc/locale.gen" "false"
+    execute_command_chroot "Uncomment en_US locale" "sed -i '/#en_US.UTF-8 UTF-8/s/^#//' /etc/locale.gen" "false"
+    execute_command_chroot "Uncomment es_BO locale" "sed -i '/#es_BO.UTF-8 UTF-8/s/^#//' /etc/locale.gen" "false"
+    execute_command_chroot "Generate locales" "locale-gen" "false"
+    execute_command_chroot "Set LANG in locale.conf" "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf" "false"
 
-    # Robust sed for locale.gen
-    sed -i '/#en_CA.UTF-8 UTF-8/s/^#//' /etc/locale.gen || { echo "Error: Failed to uncomment en_CA locale."; exit 1; }
-    sed -i '/#en_US.UTF-8 UTF-8/s/^#//' /etc/locale.gen || { echo "Error: Failed to uncomment en_US locale."; exit 1; }
-    sed -i '/#es_BO.UTF-8 UTF-8/s/^#//' /etc/locale.gen || { echo "Error: Failed to uncomment es_BO locale."; exit 1; }
-    locale-gen || { echo "Error: Failed to generate locales."; exit 1; }
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf || { echo "Error: Failed to set LANG in locale.conf."; exit 1; }
-
-    echo "archlinux" > /etc/hostname || { echo "Error: Failed to set hostname."; exit 1; }
-    echo "127.0.0.1   localhost" >> /etc/hosts
-    echo "::1         localhost" >> /etc/hosts
-    echo "127.0.1.1   archlinux.localdomain archlinux" >> /etc/hosts
+    execute_command_chroot "Set hostname" "echo \"archlinux\" > /etc/hostname" "false"
+    execute_command_chroot "Add localhost to hosts" "echo \"127.0.0.1   localhost\" >> /etc/hosts" "false"
+    execute_command_chroot "Add ::1 to hosts" "echo \"::1         localhost\" >> /etc/hosts" "false"
+    execute_command_chroot "Add archlinux to hosts" "echo \"127.0.1.1   archlinux.localdomain archlinux\" >> /etc/hosts" "false"
 
     # Step 4-B: User and Sudo Configuration
     echo "Creating user 'andres' and configuring sudo..."
-    useradd -m andres || { echo "Error: Failed to create user 'andres'."; exit 1; }
-    echo "andres:password" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # REMEMBER TO CHANGE PASSWORD
-    usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
-    # Robust sed for sudoers
-    sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers || { echo "Error: Failed to uncomment wheel group in sudoers."; exit 1; }
+    execute_command_chroot "Create user 'andres'" "useradd -m andres" "false"
+    execute_command_chroot "Set password for 'andres'" "echo \"andres:password\" | chpasswd" "false" # REMEMBER TO CHANGE PASSWORD
+    execute_command_chroot "Add 'andres' to wheel group" "usermod -aG wheel andres" "false"
+    execute_command_chroot "Uncomment wheel group in sudoers" "sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers" "false"
 
     # Step 4-C: Install Kernels and other core packages & Enable multilib
     echo "Installing Zen and Stable kernels, microcode, core utilities, and enabling multilib..."
-    pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode || { echo "Error: Failed to install kernels and microcode."; exit 1; }
-    pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo "Error: Failed to install core audio and zsh packages."; exit 1; }
+    execute_command_chroot "Install kernels and microcode" "pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode" "false"
+    execute_command_chroot "Install core audio and zsh packages" "pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh" "false"
 
     # Enable multilib repository
-    # More robust sed command to uncomment both [multilib] and its Include line
-    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/ { s/^#// }' /etc/pacman.conf || { echo "Error: Failed to enable multilib repository in pacman.conf."; exit 1; }
-    # Perform a full system update and database synchronization after enabling multilib
-    pacman -Syyu --noconfirm || { echo "Error: Failed to synchronize package databases and perform full system update after enabling multilib."; exit 1; }
+    execute_command_chroot "Uncomment multilib section (Include line) in pacman.conf" "sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/ { s/^#// }' /etc/pacman.conf" "false"
+    execute_command_chroot "Synchronize package databases and perform full system update after enabling multilib" "pacman -Syyu --noconfirm" "false"
 
     # Step 4-D: Bootloader Configuration
     echo "Configuring systemd-boot..."
-    # Removed chown for /boot as FAT32 does not support Linux permissions.
-    bootctl install || { echo "Error: Failed to install systemd-boot."; exit 1; }
+    execute_command_chroot "Install systemd-boot" "bootctl install" "false"
 
-    TODAY=\$(date +%Y-%m-%d) # Escaped for the inner shell
+    TODAY=$(date +%Y-%m-%d) # Not escaped in inner shell; bash handles this when writing the here-doc.
 
-    # All echo commands for boot entries must run as root (default in arch-chroot).
-    echo "default \${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo "Error: Failed to create loader.conf."; exit 1; }
-    echo "timeout  0" >> /boot/loader/loader.conf
-    echo "console-mode max" >> /boot/loader/loader.conf
-    echo "editor   no" >> /boot/loader/loader.conf
+    execute_command_chroot "Create loader.conf" "echo \"default ${TODAY}_linux-zen.conf\" > /boot/loader/loader.conf" "false"
+    execute_command_chroot "Add timeout to loader.conf" "echo \"timeout  0\" >> /boot/loader/loader.conf" "false"
+    execute_command_chroot "Add console-mode to loader.conf" "echo \"console-mode max\" >> /boot/loader/loader.conf" "false"
+    execute_command_chroot "Add editor no to loader.conf" "echo \"editor   no\" >> /boot/loader/loader.conf" "false"
 
-    echo "title    Arch Linux Zen" > "/boot/loader/entries/\${TODAY}_linux-zen.conf" || { echo "Error: Failed to create linux-zen boot entry."; exit 1; }
-    echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux-ucode.img" # Typo fix: intel-ucode.img initrd
-    echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
-    echo "options  root=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
+    execute_command_chroot "Create linux-zen boot entry" "echo \"title    Arch Linux Zen\" > \"/boot/loader/entries/${TODAY}_linux-zen.conf\"" "false"
+    execute_command_chroot "Add linux-zen kernel to boot entry" "echo \"linux    /vmlinuz-linux-zen\" >> \"/boot/loader/entries/${TODAY}_linux-zen.conf\"" "false"
+    execute_command_chroot "Add intel-ucode initrd to linux-zen boot entry" "echo \"initrd   /intel-ucode.img\" >> \"/boot/loader/entries/${TODAY}_linux-ucode.img\"" "false"
+    execute_command_chroot "Add initramfs-linux-zen to boot entry" "echo \"initrd   /initramfs-linux-zen.img\" >> \"/boot/loader/entries/${TODAY}_linux-zen.conf\"" "false"
+    execute_command_chroot "Add options to linux-zen boot entry" "echo \"options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off\" >> \"/boot/loader/entries/${TODAY}_linux-zen.conf\"" "false"
 
-    echo "title    Arch Linux" > "/boot/loader/entries/\${TODAY}_linux.conf" || { echo "Error: Failed to create linux boot entry."; exit 1; }
-    echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/\${TODAY}_linux.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux-ucode.img" # Typo fix: intel-ucode.img initrd
-    echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/\${TODAY}_linux.conf"
-    echo "options  root=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/\${TODAY}_linux.conf"
+    execute_command_chroot "Create linux boot entry" "echo \"title    Arch Linux\" > \"/boot/loader/entries/${TODAY}_linux.conf\"" "false"
+    execute_command_chroot "Add linux kernel to boot entry" "echo \"linux    /vmlinuz-linux\" >> \"/boot/loader/entries/${TODAY}_linux.conf\"" "false"
+    execute_command_chroot "Add intel-ucode initrd to linux boot entry" "echo \"initrd   /intel-ucode.img\" >> \"/boot/loader/entries/${TODAY}_linux-ucode.img\"" "false"
+    execute_command_chroot "Add initramfs-linux to boot entry" "echo \"initrd   /initramfs-linux.img\" >> \"/boot/loader/entries/${TODAY}_linux.conf\"" "false"
+    execute_command_chroot "Add options to linux boot entry" "echo \"options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off\" >> \"/boot/loader/entries/${TODAY}_linux.conf\"" "false"
     
     # Step 4-E: Enable getty service for auto-login (uwsm will be enabled later)
-    systemctl enable getty@tty1.service || { echo "Error: Failed to enable getty service."; exit 1; }
+    execute_command_chroot "Enable getty service" "systemctl enable getty@tty1.service" "false"
 EOF_CHROOT_SCRIPT
 
 echo -e "${YELLOW}Exiting chroot environment...${NOCOLOR}"
@@ -207,19 +304,34 @@ echo -e "${CYAN}--- Step 5: Automounting Other Drives ---${NOCOLOR}"
 echo -e "${YELLOW}Mounting other hard drives...${NOCOLOR}"
 
 # Create mount points for the drives
-mkdir -p /mnt/Documents /mnt/Videos /mnt/Backup || { echo -e "${RED}Error: Failed to create mount points for external drives.${NOCOLOR}"; exit 1; }
+execute_command "Create mount points for external drives" "mkdir -p /mnt/Documents /mnt/Videos /mnt/Backup" "true"
 
 # Get the UUIDs for your three hard drives
-DOCS_UUID=$(blkid -s UUID -o value /dev/sda) || { echo -e "${RED}Error: /dev/sda not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
-VIDEOS_UUID=$(blkid -s UUID -o value /dev/sdb) || { echo -e "${RED}Error: /dev/sdb not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
-BACKUP_UUID=$(blkid -s UUID -o value /dev/sdc) || { echo -e "${RED}Error: /dev/sdc not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
+# These steps are skippable if the drives are not present, but critical if they are expected.
+DOCS_UUID_CMD="blkid -s UUID -o value /dev/sda"
+VIDEOS_UUID_CMD="blkid -s UUID -o value /dev/sdb"
+BACKUP_UUID_CMD="blkid -s UUID -o value /dev/sdc"
 
-# Add the entries to fstab.
-echo "" >> /mnt/etc/fstab
-echo "# Mounting other drives" >> /mnt/etc/fstab
-echo "UUID=${DOCS_UUID} /mnt/Documents ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0" >> /mnt/etc/fstab
-echo "UUID=${VIDEOS_UUID} /mnt/Videos ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0" >> /mnt/etc/fstab
-echo "UUID=${BACKUP_UUID} /mnt/Backup ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0" >> /mnt/etc/fstab
+if execute_command "Get UUID for /dev/sda (Documents)" "$DOCS_UUID_CMD" "true"; then
+    DOCS_UUID=$(eval "$DOCS_UUID_CMD") # Capture the output
+    execute_command "Add /dev/sda to fstab" "echo \"UUID=${DOCS_UUID} /mnt/Documents ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0\" >> /mnt/etc/fstab" "true"
+else
+    echo -e "${YELLOW}Warning: Skipping /dev/sda (Documents) fstab entry.${NOCOLOR}"
+fi
+
+if execute_command "Get UUID for /dev/sdb (Videos)" "$VIDEOS_UUID_CMD" "true"; then
+    VIDEOS_UUID=$(eval "$VIDEOS_UUID_CMD")
+    execute_command "Add /dev/sdb to fstab" "echo \"UUID=${VIDEOS_UUID} /mnt/Videos ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0\" >> /mnt/etc/fstab" "true"
+else
+    echo -e "${YELLOW}Warning: Skipping /dev/sdb (Videos) fstab entry.${NOCOLOR}"
+fi
+
+if execute_command "Get UUID for /dev/sdc (Backup)" "$BACKUP_UUID_CMD" "true"; then
+    BACKUP_UUID=$(eval "$BACKUP_UUID_CMD")
+    execute_command "Add /dev/sdc to fstab" "echo \"UUID=${BACKUP_UUID} /mnt/Backup ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0\" >> /mnt/etc/fstab" "true"
+else
+    echo -e "${YELLOW}Warning: Skipping /dev/sdc (Backup) fstab entry.${NOCOLOR}"
+fi
 
 # ---------------------------------------------------
 # Step 6: Hyprland and Other Package Installation
@@ -228,67 +340,278 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
-# IMPORTANT: Perform a full update and sync immediately before installing these packages.
-arch-chroot /mnt pacman -Syyu --noconfirm || { echo -e "${RED}Error: Failed to refresh package databases before official package installation.${NOCOLOR}"; exit 1; }
-arch-chroot /mnt pacman -S --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" || { echo -e "${RED}Error: Failed to install official packages.${NOCOLOR}"; exit 1; }
+execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
+execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"$DOTFILES_TEMP_NVME_DIR/pkg_official.txt\"" "false"
 
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
-# Clone yay-bin and build as the 'andres' user in the new root
-arch-chroot /mnt bash << EOL
-    git clone https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin || { echo "Error: Failed to clone yay-bin inside chroot."; exit 1; }
-    chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
+arch-chroot /mnt bash << 'EOL_AUR_INSTALL' # Use single quotes here to prevent outer shell variable expansion
+
+    # --- Interactive Error Handler Function (inside chroot) ---
+    handle_failure_aur() {
+        local cmd_description="$1"
+        local failed_command="$2"
+        local skippable="$3"
+
+        echo "Error: $cmd_description failed!"
+        echo "Failed command: $failed_command"
+
+        while true; do
+            if [ "$skippable" = "true" ]; then
+                echo "Options: (r)etry, (s)kip this step, (q)uit installation."
+            else
+                echo "This step is critical and cannot be skipped. Options: (r)etry, (q)uit installation."
+            fi
+            
+            read -r -p "Enter your choice: " choice
+            case "$choice" in
+                r|R)
+                    echo "Retrying '$cmd_description'..."
+                    return 0 # Indicate retry
+                    ;;
+                s|S)
+                    if [ "$skippable" = "true" ]; then
+                        echo "Skipping '$cmd_description'."
+                        return 1 # Indicate skip
+                    else
+                        echo "Invalid choice. This critical step cannot be skipped."
+                    fi
+                    ;;
+                q|Q)
+                    echo "Quitting installation as requested."
+                    exit 1
+                    ;;
+                *)
+                    echo "Invalid choice. Please enter 'r', 's', or 'q'."
+                    ;;
+            esac
+        done
+    }
+
+    execute_command_aur() {
+        local cmd_description="$1"
+        local command_to_execute="$2"
+        local skippable="$3"
+
+        while true; do
+            if eval "$command_to_execute"; then
+                echo "SUCCESS: $cmd_description"
+                return 0
+            else
+                if handle_failure_aur "$cmd_description" "$command_to_execute" "$skippable"; then
+                    continue
+                else
+                    if [ "$skippable" = "true" ]; then
+                        return 1
+                    else
+                        echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
+                        exit 1
+                    fi
+                fi
+            fi
+        done
+    }
+
+    # Clone yay-bin with a timeout and interactive retry
+    YAY_CLONE_CMD="git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.com/yay-bin.git /home/andres/yay-bin"
+    if ! execute_command_aur "Clone yay-bin from AUR" "$YAY_CLONE_CMD" "true"; then
+        echo "Warning: Failed to clone yay-bin. AUR packages will not be installed."
+        exit 0 # Exit this chroot block, but allow main script to continue
+    fi
+
+    # Ownership and makepkg commands remain. These are critical if yay was cloned.
+    execute_command_aur "Change ownership of yay-bin" "chown -R andres:andres /home/andres/yay-bin" "false"
     # Run makepkg as the 'andres' user
-    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay inside chroot."; exit 1; }
-EOL
+    # makepkg will prompt, ensure --noconfirm
+    execute_command_aur "Build and install yay" "sudo -u andres bash -c \"cd /home/andres/yay-bin && makepkg -si --noconfirm\"" "false"
+
+EOL_AUR_INSTALL
 
 # Step 6-C: Install AUR Packages with Yay
 echo -e "${YELLOW}Installing AUR packages from pkg_aur.txt...${NOCOLOR}"
-# Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
-arch-chroot /mnt sudo -u andres bash << EOL
-    yay -S --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" || { echo "Error: Failed to install AUR packages inside chroot."; exit 1; }
-EOL
+arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
+    # Use the same error handling function defined above for AUR packages
+    handle_failure_aur_pkgs() { # Renamed to avoid conflicts if needed, though this is within its own here-doc
+        local cmd_description="$1"
+        local failed_command="$2"
+        local skippable="$3"
+
+        echo "Error: $cmd_description failed!"
+        echo "Failed command: $failed_command"
+
+        while true; do
+            if [ "$skippable" = "true" ]; then
+                echo "Options: (r)etry, (s)kip this step, (q)uit installation."
+            else
+                echo "This step is critical and cannot be skipped. Options: (r)etry, (q)uit installation."
+            fi
+            
+            read -r -p "Enter your choice: " choice
+            case "$choice" in
+                r|R)
+                    echo "Retrying '$cmd_description'..."
+                    return 0 # Indicate retry
+                    ;;
+                s|S)
+                    if [ "$skippable" = "true" ]; then
+                        echo "Skipping '$cmd_description'."
+                        return 1 # Indicate skip
+                    else
+                        echo "Invalid choice. This critical step cannot be skipped."
+                    fi
+                    ;;
+                q|Q)
+                    echo "Quitting installation as requested."
+                    exit 1
+                    ;;
+                *)
+                    echo "Invalid choice. Please enter 'r', 's', or 'q'."
+                    ;;
+            esac
+        done
+    }
+
+    execute_command_aur_pkgs() {
+        local cmd_description="$1"
+        local command_to_execute="$2"
+        local skippable="$3"
+
+        while true; do
+            if eval "$command_to_execute"; then
+                echo "SUCCESS: $cmd_description"
+                return 0
+            else
+                if handle_failure_aur_pkgs "$cmd_description" "$command_to_execute" "$skippable"; then
+                    continue
+                else
+                    if [ "$skippable" = "true" ]; then
+                        return 1
+                    else
+                        echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
+                        exit 1
+                    fi
+                fi
+            fi
+        done
+    }
+
+    # Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
+    # Assuming $DOTFILES_TEMP_NVME_DIR is correctly set and readable within chroot
+    # We will reconstruct the path.
+    local pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
+    if [ ! -f "$pkg_aur_path" ]; then
+        echo "Error: pkg_aur.txt not found at $pkg_aur_path. Cannot install AUR packages."
+        exit 1 # Exit this chroot block if pkg_aur.txt is missing
+    fi
+
+    if ! execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"$pkg_aur_path\"" "true"; then
+        echo "Warning: Some AUR packages failed to install."
+        # Don't exit here, allow main script to continue, as user chose to skip or some packages might be non-critical.
+    fi
+EOL_AUR_PACKAGES
 
 # ---------------------------------------------------
 # Step 7: Dotfile Restoration
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 7: Dotfile Restoration ---${NOCOLOR}"
 echo -e "${YELLOW}Setting up bare dotfiles repository and restoring configurations to /home/andres/...${NOCOLOR}"
-# This step initializes the bare repository in the new system's home directory
-arch-chroot /mnt bash << EOL
-    # Initialize the bare repository
-    git init --bare "$DOTFILES_BARE_DIR" || { echo "Error: Failed to initialize bare dotfiles repository."; exit 1; }
-    # Configure git to use the bare repo for dotfile management
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo "Error: Failed to configure git for dotfiles."; exit 1; }
-    # The 'checkout' step will now clone from the remote repo directly to the user's home
-    # as we no longer have a local full clone in /mnt/home/andres/
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres remote add origin "$REPO_URL" || { echo "Error: Failed to add origin remote to bare dotfiles repo."; exit 1; }
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres fetch origin main || { echo "Error: Failed to fetch from origin remote."; exit 1; }
-    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres checkout --force main || { echo "Error: Failed to checkout main branch from bare dotfiles repo."; exit 1; }
-EOL
+arch-chroot /mnt bash << 'EOL_DOTFILES'
+    # Re-define error handling functions for this chroot block
+    handle_failure_dotfiles() {
+        local cmd_description="$1"
+        local failed_command="$2"
+        local skippable="$3"
 
-# Assuming user's dotfiles repo structure is mostly flat or directly maps to $HOME/.config etc.
-echo -e "${YELLOW}Adjusting dotfile locations if necessary...${NOCOLOR}"
-arch-chroot /mnt bash << EOL
-    # Move fonts to ~/.local/share/fonts (if they were at the root of your dotfiles repo)
+        echo "Error: $cmd_description failed!"
+        echo "Failed command: $failed_command"
+
+        while true; do
+            if [ "$skippable" = "true" ]; then
+                echo "Options: (r)etry, (s)kip this step, (q)uit installation."
+            else
+                echo "This step is critical and cannot be skipped. Options: (r)etry, (q)uit installation."
+            fi
+            
+            read -r -p "Enter your choice: " choice
+            case "$choice" in
+                r|R)
+                    echo "Retrying '$cmd_description'..."
+                    return 0 # Indicate retry
+                    ;;
+                s|S)
+                    if [ "$skippable" = "true" ]; then
+                        echo "Skipping '$cmd_description'."
+                        return 1 # Indicate skip
+                    else
+                        echo "Invalid choice. This critical step cannot be skipped."
+                    fi
+                    ;;
+                q|Q)
+                    echo "Quitting installation as requested."
+                    exit 1
+                    ;;
+                *)
+                    echo "Invalid choice. Please enter 'r', 's', or 'q'."
+                    ;;
+            esac
+        done
+    }
+
+    execute_command_dotfiles() {
+        local cmd_description="$1"
+        local command_to_execute="$2"
+        local skippable="$3"
+
+        while true; do
+            if eval "$command_to_execute"; then
+                echo "SUCCESS: $cmd_description"
+                return 0
+            else
+                if handle_failure_dotfiles "$cmd_description" "$command_to_execute" "$skippable"; then
+                    continue
+                else
+                    if [ "$skippable" = "true" ]; then
+                        return 1
+                    else
+                        echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
+                        exit 1
+                    fi
+                fi
+            fi
+        done
+    }
+
+    # Variables from outer script need to be explicitly passed or reconstructed.
+    # Using hardcoded value for DOTFILES_BARE_DIR as it's static and known.
+    local DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
+    local REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
+
+    execute_command_dotfiles "Initialize bare dotfiles repository" "git init --bare \"$DOTFILES_BARE_DIR_CHROOT\"" "false"
+    execute_command_dotfiles "Configure git for dotfiles" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres config --local status.showUntrackedFiles no" "false"
+    execute_command_dotfiles "Add origin remote to bare dotfiles repo" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres remote add origin \"$REPO_URL_CHROOT\"" "false"
+    execute_command_dotfiles "Fetch from origin remote" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres fetch origin main" "false"
+    execute_command_dotfiles "Checkout main branch from bare dotfiles repo" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres checkout --force main" "false"
+
+    echo "Adjusting dotfile locations if necessary..."
+    # Move fonts
     if [ -d "/home/andres/fonts" ]; then
         mkdir -p /home/andres/.local/share/fonts
-        mv /home/andres/fonts/* /home/andres/.local/share/fonts/ || { echo "Error: Failed to move fonts."; exit 1; }
-        rmdir /home/andres/fonts
+        execute_command_dotfiles "Move fonts" "mv /home/andres/fonts/* /home/andres/.local/share/fonts/" "true"
+        rmdir /home/andres/fonts 2>/dev/null || true # Ignore error if dir not empty
     fi
-    # Move themes to ~/.local/share/themes (if they were at the root of your dotfiles repo)
+    # Move themes
     if [ -d "/home/andres/themes" ]; then
         mkdir -p /home/andres/.local/share/themes
-        mv /home/andres/themes/* /home/andres/.local/share/themes/ || { echo "Error: Failed to move themes."; exit 1; }
-        rmdir /home/andres/themes
+        execute_command_dotfiles "Move themes" "mv /home/andres/themes/* /home/andres/.local/share/themes/" "true"
+        rmdir /home/andres/themes 2>/dev/null || true
     fi
-    # Move systemd user services to ~/.config/systemd/user (if they were at the root of your dotfiles repo)
+    # Move systemd user services
     if [ -d "/home/andres/systemd" ]; then
         mkdir -p /home/andres/.config/systemd/user
-        mv /home/andres/systemd/* /home/andres/.config/systemd/user/ || { echo "Error: Failed to move systemd user services."; exit 1; }
-        rmdir /home/andres/systemd
+        execute_command_dotfiles "Move systemd user services" "mv /home/andres/systemd/* /home/andres/.config/systemd/user/" "true"
+        rmdir /home/andres/systemd 2>/dev/null || true
     fi
-EOL
+EOL_DOTFILES
 
 
 # ---------------------------------------------------
@@ -297,11 +620,8 @@ EOL
 echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Activation ---${NOCOLOR}"
 echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOCOLOR}"
 
-# Set default shell to Zsh for user 'andres'
-arch-chroot /mnt usermod --shell /usr/bin/zsh andres || { echo "Error: Failed to set default shell for 'andres' to zsh."; exit 1; }
-
-# Enable uwsm service for user 'andres'
-arch-chroot /mnt systemctl enable uwsm@andres.service || { echo "Error: Failed to enable uwsm service."; exit 1; }
+execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
+execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "false"
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
@@ -309,8 +629,7 @@ arch-chroot /mnt systemctl enable uwsm@andres.service || { echo "Error: Failed t
 echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
 echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
 
-# Clean up the temporary dotfiles directory from NVMe
-rm -rf "$DOTFILES_TEMP_NVME_DIR" || { echo "Warning: Failed to remove temporary dotfiles directory from NVMe. Please clean up manually."; }
+execute_command "Clean up temporary dotfiles directory" "rm -rf \"$DOTFILES_TEMP_NVME_DIR\"" "true"
+execute_command "Unmount /mnt" "umount -R /mnt" "false"
 
-umount -R /mnt || { echo -e "${RED}Error: Failed to unmount /mnt. Please unmount manually."; exit 1; }
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
