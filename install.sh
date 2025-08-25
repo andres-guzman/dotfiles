@@ -222,8 +222,7 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     echo "andres:password" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # REMEMBER TO CHANGE PASSWORD
     usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
     
-    # FIX: Configure sudoers for NOPASSWD for makepkg, essential for non-interactive yay builds.
-    # This ensures that even if makepkg/yay *internally* tries to use sudo, it won't prompt for password.
+    # Configure sudoers for NOPASSWD for makepkg, essential for non-interactive builds.
     echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg" > /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not configure NOPASSWD for makepkg. Some build steps might require password."; }
     chmod 0440 /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not set permissions for makepkg-nopasswd sudoers file."; }
     
@@ -309,31 +308,19 @@ execute_command "Refresh package databases before official package installation"
 execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\"" "false"
 
 # --- New: Targeted uwsm installation verification and forceful reinstallation ---
-UWSM_INSTALLED=false
-echo -e "${YELLOW}Verifying 'uwsm' package installation...${NOCOLOR}"
-if arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1; then
-    echo -e "${GREEN}SUCCESS: 'uwsm' package is reported as installed by pacman -Q.${NOCOLOR}"
-    UWSM_INSTALLED=true
-else
-    echo -e "${RED}Error: 'uwsm' package does not appear to be installed via pacman -Q, despite being in pkg_official.txt.${NOCOLOR}"
-    echo -e "${YELLOW}This might indicate a problem during the 'Install official packages' step or a missing dependency.${NOCOLOR}"
-    
-    # Try forceful reinstallation directly here, as base-devel should now be present
+# Simplified uwsm check as it is an official package, any issues are now critical installation failures.
+echo -e "${YELLOW}Verifying 'uwsm' package installation and service file presence...${NOCOLOR}"
+if ! arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1 || ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
+    echo -e "${RED}Error: 'uwsm' package or its service unit file is missing/corrupted.${NOCOLOR}"
     echo -e "${YELLOW}Attempting forceful reinstallation of 'uwsm' to resolve.${NOCOLOR}"
-    if execute_command "Force reinstall uwsm" "arch-chroot /mnt pacman -S --noconfirm --overwrite '*' uwsm" "false"; then
-        echo -e "${GREEN}SUCCESS: 'uwsm' forcefully reinstalled and now reported as installed.${NOCOLOR}"
-        UWSM_INSTALLED=true
-    else
-        echo -e "${RED}Error: Forceful reinstallation of 'uwsm' failed. uwsm service cannot be enabled.${NOCOLOR}"
-        UWSM_INSTALLED=false
+    execute_command "Force reinstall uwsm" "arch-chroot /mnt pacman -S --noconfirm --overwrite '*' uwsm" "false"
+    # Re-check after forceful reinstall
+    if ! arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1 || ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
+        echo -e "${RED}Critical Error: 'uwsm' package or its service file could not be installed/restored even after forceful reinstallation. This requires manual debugging.${NOCOLOR}"
+        exit 1 # Exit, as uwsm is critical for your setup.
     fi
-fi
-
-# Final check for uwsm.service file after all installation attempts
-if [[ "$UWSM_INSTALLED" == "true" ]] && ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
-    echo -e "${RED}Critical inconsistency: 'uwsm' package is reported installed, but uwsm@.service unit file is still missing.${NOCOLOR}"
-    echo -e "${YELLOW}This indicates a deeper system issue with package file extraction. Skipping uwsm service enablement.${NOCOLOR}"
-    UWSM_INSTALLED=false # Mark as not truly installed for service enablement purposes
+else
+    echo -e "${GREEN}SUCCESS: 'uwsm' package and service file confirmed present.${NOCOLOR}"
 fi
 # ---------------------------------------------------
 
@@ -341,7 +328,7 @@ fi
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
 arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
-    # Enable strict mode for error handling within this chroot block
+    # Enable strict mode for error handling within this chroot script
     set -e
     set -o pipefail
 
@@ -350,7 +337,6 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
-        # Corrected AUR URL to .org
         if git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
             YAY_CLONE_SUCCESS=true
             echo "SUCCESS: Cloned yay-bin from AUR."
@@ -363,7 +349,6 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     if ! \$YAY_CLONE_SUCCESS; then
         echo "Error: Failed to clone yay-bin after multiple attempts. AUR packages will not be installed."
-        # Instead of exiting this heredoc with 0, we can write a flag to /tmp to signal failure to the next block.
         echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
         exit 0 # Exit this chroot block gracefully.
     fi
@@ -371,11 +356,10 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # FIX: Run makepkg as the 'andres' user directly using su, and relying on NOPASSWD for makepkg.
-    echo "Building and installing yay as user 'andres'..."
-    # Explicitly use sudo -u andres with NOPASSWD for makepkg to avoid tty issues, after chown
-    # This also leverages the NOPASSWD rule established earlier.
-    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
+    # FIX: Run makepkg -si as the 'root' user within the chroot directly, to avoid sudo password prompts.
+    # This ensures yay is installed globally and non-interactively.
+    echo "Building and installing yay as root..."
+    (cd /home/andres/yay-bin && makepkg -si --noconfirm) || { echo "Error: Failed to build and install yay as root inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
@@ -388,8 +372,6 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     set -e
     set -o pipefail
 
-    # Read the status from the temporary file to check if yay was installed.
-    # If the file doesn't exist or indicates failure, skip AUR packages.
     if [ -f "/tmp/yay_install_status.tmp" ] && [ "\$(cat /tmp/yay_install_status.tmp)" = "SUCCESS" ]; then
         echo "Yay was successfully installed. Proceeding with AUR packages."
     else
@@ -397,16 +379,16 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
         exit 0 # Exit this chroot block gracefully.
     fi
 
-    pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt" # This path should be correct from outer script
+    pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
 
     if [ ! -f "\${pkg_aur_path}" ]; then
         echo "Error: pkg_aur_path not found at \${pkg_aur_path}. Cannot install AUR packages."
         exit 0 # Exit this chroot block gracefully, no AUR packages to install
     fi
 
-    echo "Installing AUR packages listed in \${pkg_aur_path}..."
-    # FIX: Run yay as the 'andres' user directly using sudo -u with NOPASSWD for makepkg/yay
-    sudo -u andres bash -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
+    echo "Installing AUR packages listed in \${pkg_aur_path} using yay as root..."
+    # FIX: Run yay -S as the 'root' user within the chroot directly, to avoid sudo password prompts.
+    yay -S --noconfirm - < "\${pkg_aur_path}" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
     
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
@@ -465,22 +447,11 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# Check if uwsm.service unit file exists before attempting to enable.
-# This depends on the UWSM_INSTALLED flag set earlier.
-if [[ "$UWSM_INSTALLED" == "true" ]]; then
-    if arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
-        echo -e "${GREEN}uwsm@.service unit file found. Attempting to enable uwsm service.${NOCOLOR}"
-        execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
-    else
-        # This branch should now only be hit if the package was marked installed, but the file is still missing.
-        echo -e "${RED}Error: uwsm@.service unit file not found even after ensuring uwsm package installation (final check).${NOCOLOR}"
-        echo -e "${YELLOW}This indicates a deeper system issue with package file extraction for 'uwsm'. Skipping uwsm service enablement.${NOCOLOR}"
-        # Execute a dummy command to give interactive options
-        execute_command "Attempt to enable uwsm service (diagnostic, likely requires manual fix)" "false" "true"
-    fi
-else
-    echo -e "${YELLOW}Skipping uwsm service enablement as the 'uwsm' package could not be installed after multiple attempts.${NOCOLOR}"
-fi
+# FIX: Directly enable uwsm service. It should be installed via official packages.
+echo -e "${YELLOW}Attempting to enable uwsm service...${NOCOLOR}"
+execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+# After enabling, force systemd to reload its units to pick up any changes
+execute_command "Reload systemd daemon" "arch-chroot /mnt systemctl daemon-reload" "true"
 
 
 # ---------------------------------------------------
