@@ -221,9 +221,13 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     useradd -m andres || { echo "Error: Failed to create user 'andres'."; exit 1; }
     echo "andres:password" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # REMEMBER TO CHANGE PASSWORD
     usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
-    # Configure sudoers for non-interactive use of makepkg later for yay build, if still needed for other tasks
+    
+    # FIX: Configure sudoers for NOPASSWD for makepkg, essential for non-interactive yay builds.
+    # This ensures that even if makepkg/yay *internally* tries to use sudo, it won't prompt for password.
     echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg" > /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not configure NOPASSWD for makepkg. Some build steps might require password."; }
     chmod 0440 /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not set permissions for makepkg-nopasswd sudoers file."; }
+    
+    # Also uncomment the general wheel group access for sudo
     sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers || { echo "Error: Failed to uncomment wheel group in sudoers."; exit 1; }
 
 
@@ -367,9 +371,11 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # FIX: Run makepkg as the 'andres' user directly using su, avoiding sudo password prompt
+    # FIX: Run makepkg as the 'andres' user directly using su, and relying on NOPASSWD for makepkg.
     echo "Building and installing yay as user 'andres'..."
-    su - andres -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
+    # Explicitly use sudo -u andres with NOPASSWD for makepkg to avoid tty issues, after chown
+    # This also leverages the NOPASSWD rule established earlier.
+    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
@@ -399,8 +405,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     fi
 
     echo "Installing AUR packages listed in \${pkg_aur_path}..."
-    # FIX: Run yay as the 'andres' user directly using su, avoiding sudo password prompt
-    su - andres -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
+    # FIX: Run yay as the 'andres' user directly using sudo -u with NOPASSWD for makepkg/yay
+    sudo -u andres bash -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
     
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
