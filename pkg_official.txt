@@ -22,12 +22,10 @@ bluez
 bluez-utils
 blueman
 udiskie
-downgrade
 polkit-gnome
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 pacman-contrib
-python-pyamdgpuinfo
 parallel
 jq
 imagemagick
@@ -58,7 +56,6 @@ ark
 unzip
 nvim
 nwg-displays
-emote
 ufw
 smartmontools
 ffmpeg
@@ -119,8 +116,6 @@ python-pycountry
 python-pytz
 python-requests
 zsh
-oh-my-zsh-git
-zsh-theme-powerlevel10k-git
 starship
 fastfetch
 steam
@@ -130,5 +125,4 @@ gamescope
 lutris
 cava
 spotify
-spicetify-cli
 cmus
