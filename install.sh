@@ -64,6 +64,7 @@ mount "${DRIVE}p1" /mnt/boot || { echo -e "${RED}Error: Failed to mount EFI part
 
 # Install terminus-font and set console font for the live environment (EARLIEST POSSIBLE)
 echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
+# This pacman call will now be after the keyring reset in Step 0
 pacman -Sy --noconfirm terminus-font || { echo -e "${RED}Error: Failed to install terminus-font in live environment.${NOCOLOR}"; exit 1; }
 echo -e "${YELLOW}Setting console font to ter-v16n...${NOCOLOR}"
 setfont ter-v16n || { echo -e "${RED}Error: Failed to set console font in live environment.${NOCOLOR}"; exit 1; }
@@ -227,8 +228,9 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
-# Path adjusted to fetch from NVMe temporary directory
-arch-chroot /mnt pacman -Syu --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" || { echo -e "${RED}Error: Failed to install official packages.${NOCOLOR}"; exit 1; }
+# IMPORTANT: Perform a full update and sync immediately before installing these packages.
+arch-chroot /mnt pacman -Syyu --noconfirm || { echo -e "${RED}Error: Failed to refresh package databases before official package installation.${NOCOLOR}"; exit 1; }
+arch-chroot /mnt pacman -S --noconfirm - < "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" || { echo -e "${RED}Error: Failed to install official packages.${NOCOLOR}"; exit 1; }
 
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
