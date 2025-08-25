@@ -182,7 +182,6 @@ execute_command "Download pkg_aur.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/p
 echo -e "${CYAN}--- Step 4: System Configuration (Inside chroot) ---${NOCOLOR}"
 echo -e "${YELLOW}Entering chroot environment to configure the system...${NOCOLOR}"
 
-# Changed /bin/sh to /bin/bash for more consistent interactive shell behavior
 arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT' 
     # Enable strict mode for error handling within the chroot script
     set -e
@@ -265,13 +264,11 @@ echo -e "${YELLOW}Mounting other hard drives...${NOCOLOR}"
 execute_command "Create mount points for external drives" "mkdir -p /mnt/Documents /mnt/Videos /mnt/Backup" "true"
 
 # Get the UUIDs for your three hard drives
-# These steps are skippable if the drives are not present, but critical if they are expected.
 DOCS_UUID_CMD="blkid -s UUID -o value /dev/sda"
 VIDEOS_UUID_CMD="blkid -s UUID -o value /dev/sdb"
 BACKUP_UUID_CMD="blkid -s UUID -o value /dev/sdc"
 
 # Replaced interactive handling with non-interactive checks and warnings.
-# If blkid fails, the variable will be empty, and the fstab entry will be skipped.
 DOCS_UUID=$(eval "$DOCS_UUID_CMD" 2>/dev/null) || { echo -e "${YELLOW}Warning: /dev/sda not found or UUID not readable. Skipping fstab entry for Documents.${NOCOLOR}"; }
 if [[ -n "$DOCS_UUID" ]]; then
     execute_command "Add /dev/sda to fstab" "echo \"UUID=${DOCS_UUID} /mnt/Documents ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0\" >> /mnt/etc/fstab" "true"
@@ -299,14 +296,16 @@ execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconf
 
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL # Changed to /bin/bash for consistency and removed single quotes
+arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
 
-    local YAY_CLONE_RETRIES=3
-    local YAY_CLONE_SUCCESS=false
+    # FIX: Removed 'local' keyword
+    YAY_CLONE_RETRIES=3
+    # FIX: Removed 'local' keyword
+    YAY_CLONE_SUCCESS=false
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
@@ -335,14 +334,15 @@ EOL_AUR_INSTALL
 
 # Step 6-C: Install AUR Packages with Yay
 echo -e "${YELLOW}Installing AUR packages from pkg_aur.txt...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES # Changed to /bin/bash and removed single quotes
+arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
 
     # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
 
     # Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
-    local pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt" # This path should be correct from outer script
+    # FIX: Removed 'local' keyword
+    pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt" # This path should be correct from outer script
 
     if [ ! -f "\${pkg_aur_path}" ]; then
         echo "Error: pkg_aur_path not found at \${pkg_aur_path}. Cannot install AUR packages."
@@ -362,7 +362,7 @@ EOL_AUR_PACKAGES
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 7: Dotfile Restoration ---${NOCOLOR}"
 echo -e "${YELLOW}Setting up bare dotfiles repository and restoring configurations to /home/andres/...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << EOL_DOTFILES # Changed to /bin/bash and removed single quotes
+arch-chroot /mnt /bin/bash << EOL_DOTFILES
 
     # Enable strict mode for error handling within this chroot block
     set -e
@@ -370,8 +370,10 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES # Changed to /bin/bash and removed si
 
     # Variables from outer script need to be explicitly passed or reconstructed.
     # Using hardcoded value for DOTFILES_BARE_DIR as it's static and known.
-    local DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
-    local REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
+    # FIX: Removed 'local' keyword
+    DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
+    # FIX: Removed 'local' keyword
+    REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
 
     git init --bare "\${DOTFILES_BARE_DIR_CHROOT}" || { echo "Error: Failed to initialize bare dotfiles repository."; exit 1; }
     git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo "Error: Failed to configure git for dotfiles."; exit 1; }
