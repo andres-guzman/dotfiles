@@ -141,9 +141,6 @@ execute_command "Mount Root partition" "mount \"${DRIVE}p3\" /mnt" "false"
 execute_command "Create /mnt/boot directory" "mkdir -p /mnt/boot" "false"
 execute_command "Mount EFI partition" "mount \"${DRIVE}p1\" /mnt/boot" "false"
 
-# --- NEW: Copy host resolv.conf into chroot for DNS resolution ---
-echo -e "${YELLOW}Copying /etc/resolv.conf from live environment to /mnt/etc/resolv.conf for DNS resolution in chroot...${NOCOLOR}"
-execute_command "Copy /etc/resolv.conf" "cp /etc/resolv.conf /mnt/etc/resolv.conf" "false"
 
 # Install terminus-font and set console font for the live environment (EARLIEST POSSIBLE)
 echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
@@ -158,6 +155,10 @@ execute_command "Pacstrap base system and base-devel" "pacstrap /mnt base base-d
 
 # Step 2-C: Generate fstab
 execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
+
+# --- NEW: Copy host resolv.conf into chroot for DNS resolution (MOVED TO AFTER PACSTRAP) ---
+echo -e "${YELLOW}Copying /etc/resolv.conf from live environment to /mnt/etc/resolv.conf for DNS resolution in chroot...${NOCOLOR}"
+execute_command "Copy /etc/resolv.conf" "cp /etc/resolv.conf /mnt/etc/resolv.conf" "false"
 
 
 # ---------------------------------------------------
