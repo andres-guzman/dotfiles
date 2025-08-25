@@ -146,10 +146,14 @@ arch-chroot /mnt << EOF
     usermod -aG wheel andres || { echo -e "${RED}Error: Failed to add 'andres' to wheel group.${NOCOLOR}"; exit 1; }
     sed -i 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers || { echo -e "${RED}Error: Failed to uncomment wheel group in sudoers.${NOCOLOR}"; exit 1; }
 
-    # Step 4-C: Install Kernels and other core packages
-    echo -e "${YELLOW}Installing Zen and Stable kernels, microcode, and core utilities...${NOCOLOR}"
+    # Step 4-C: Install Kernels and other core packages & Enable multilib
+    echo -e "${YELLOW}Installing Zen and Stable kernels, microcode, core utilities, and enabling multilib...${NOCOLOR}"
     pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode || { echo -e "${RED}Error: Failed to install kernels and microcode.${NOCOLOR}"; exit 1; }
     pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo -e "${RED}Error: Failed to install core audio and zsh packages.${NOCOLOR}"; exit 1; }
+
+    # Enable multilib repository
+    sed -i "/\[multilib\]/,/Include/"'s/^#//' /etc/pacman.conf || { echo -e "${RED}Error: Failed to enable multilib repository in pacman.conf.${NOCOLOR}"; exit 1; }
+    pacman -Syy || { echo -e "${RED}Error: Failed to synchronize package databases after enabling multilib.${NOCOLOR}"; exit 1; } # Force sync after enabling multilib
 
     # Step 4-D: Bootloader Configuration
     echo -e "${YELLOW}Configuring systemd-boot...${NOCOLOR}"
