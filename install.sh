@@ -316,32 +316,14 @@ arch-chroot /mnt /bin/bash << 'EOF_UWSM_INSTALL'
     set -e
     set -o pipefail
     
-    UWSM_BROKEN=false
-    if pacman -Q uwsm >/dev/null 2>&1; then
-        echo "uwsm package is reported installed by pacman -Q."
-        if ! test -f /usr/lib/systemd/system/uwsm@.service; then
-            echo "Warning: uwsm@.service unit file is missing despite package being installed. Marking as broken."
-            UWSM_BROKEN=true
-        else
-            echo "uwsm@.service unit file found."
-        fi
+    echo "Checking uwsm status before reinstallation attempt..."
+    # Always attempt a full reinstallation with yes | to handle any prompts
+    echo "Attempting clean reinstallation of uwsm with automatic confirmation."
+    if yes | pacman -S uwsm --noconfirm; then
+        echo "SUCCESS: uwsm package reinstalled successfully."
     else
-        echo "uwsm package is not currently installed."
-        UWSM_BROKEN=true # If not installed, we treat it as needing a fresh install
-    fi
-
-    if [ "$UWSM_BROKEN" = true ]; then
-        echo "Attempting to remove uwsm before clean reinstallation if it exists."
-        pacman -Rns uwsm --noconfirm >/dev/null 2>&1 || true # Remove if it's there and broken, ignore if not found
-        echo "Attempting clean reinstallation of uwsm."
-        if pacman -S uwsm --noconfirm; then
-            echo "SUCCESS: uwsm package reinstalled successfully."
-        else
-            echo "CRITICAL ERROR: Failed to install uwsm even after forced reinstallation attempt. This requires manual intervention."
-            exit 1 # Exit on critical uwsm failure
-        fi
-    else
-        echo "uwsm package found and appears functional. No reinstallation needed."
+        echo "CRITICAL ERROR: Failed to install uwsm even with automatic confirmation. This is a severe issue."
+        exit 1 # Exit on critical uwsm failure
     fi
 
     # Final attempt to enable uwsm service
@@ -360,7 +342,7 @@ EOF_UWSM_INSTALL
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
 arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
-    # Enable strict mode for error handling within this chroot script
+    # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
 
@@ -391,7 +373,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # FIX: Run makepkg -si as the 'root' user within the chroot directly, to avoid sudo password prompts.
     # This ensures yay is installed globally and non-interactively.
     echo "Building and installing yay as root..."
-    (cd /home/andres/yay-bin && makepkg -si --noconfirm) || { echo "Error: Failed to build and install yay as root inside chroot."; exit 1; }
+    # Pipe 'yes' to makepkg for any potential prompts
+    yes | (cd /home/andres/yay-bin && makepkg -si --noconfirm) || { echo "Error: Failed to build and install yay as root inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
