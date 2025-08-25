@@ -78,13 +78,40 @@ genfstab -U /mnt >> /mnt/etc/fstab || { echo -e "${RED}Error: Failed to generate
 echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
+# Explicitly create /mnt/home/andres before creating the temporary directory
+# This ensures the parent path exists with proper root ownership for mkdir -p.
+mkdir -p /mnt/home/andres || { echo -e "${RED}Error: Failed to create /mnt/home/andres directory on NVMe.${NOCOLOR}"; exit 1; }
+
 # Create a temporary directory on the NVMe disk for fetching dotfiles
 DOTFILES_TEMP_NVME_DIR="/mnt/home/andres/temp_dotfiles_setup"
-mkdir -p "$DOTFILES_TEMP_NVME_DIR" || { echo -e "${RED}Error: Failed to create temporary dotfiles directory on NVMe.${NOCOLOR}"; exit 1; }
+mkdir -p "$DOTFILES_TEMP_NVME_DIR" || { echo -e "${RED}Error: Failed to create temporary dotfiles directory on NVMe: $DOTFILES_TEMP_NVME_DIR.${NOCOLOR}"; exit 1; }
 
-# Download pkg_official.txt and pkg_aur.txt directly to the NVMe drive
-curl -LO "$PKG_OFFICIAL_URL" -o "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" || { echo -e "${RED}Error: Failed to download pkg_official.txt to NVMe.${NOCOLOR}"; exit 1; }
-curl -LO "$PKG_AUR_URL" -o "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" || { echo -e "${RED}Error: Failed to download pkg_aur.txt to NVMe.${NOCOLOR}"; exit 1; }
+# Download pkg_official.txt directly to the NVMe drive with robust error handling
+echo -e "${YELLOW}Attempting to download pkg_official.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
+curl -f -o "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" "$PKG_OFFICIAL_URL" || { 
+    echo -e "${RED}Error: Failed to download pkg_official.txt to NVMe. Check URL: $PKG_OFFICIAL_URL and network connectivity.${NOCOLOR}"; 
+    exit 1; 
+}
+# Verify download immediately
+if [ ! -f "$DOTFILES_TEMP_NVME_DIR/pkg_official.txt" ]; then
+    echo -e "${RED}Error: pkg_official.txt was not found after download attempt in ${DOTFILES_TEMP_NVME_DIR}. Download failed silently.${NOCOLOR}"; 
+    exit 1;
+fi
+echo -e "${GREEN}pkg_official.txt downloaded successfully.${NOCOLOR}"
+
+# Download pkg_aur.txt directly to the NVMe drive with robust error handling
+echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
+curl -f -o "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" "$PKG_AUR_URL" || { 
+    echo -e "${RED}Error: Failed to download pkg_aur.txt to NVMe. Check URL: $PKG_AUR_URL and network connectivity.${NOCOLOR}"; 
+    exit 1; 
+}
+# Verify download immediately
+if [ ! -f "$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt" ]; then
+    echo -e "${RED}Error: pkg_aur.txt was not found after download attempt in ${DOTFILES_TEMP_NVME_DIR}. Download failed silently.${NOCOLOR}"; 
+    exit 1;
+fi
+echo -e "${GREEN}pkg_aur.txt downloaded successfully.${NOCOLOR}"
+
 
 # ---------------------------------------------------
 # Step 4: System Configuration (Inside chroot)
