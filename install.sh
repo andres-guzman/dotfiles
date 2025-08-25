@@ -157,25 +157,24 @@ execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
 echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
+# Re-define DOTFILES_TEMP_NVME_DIR here to ensure it's set right before use
+# This is a critical redundant step to guarantee the variable is not empty.
+DOTFILES_TEMP_NVME_DIR="/mnt/home/andres/temp_dotfiles_setup"
+
 # Debug print at the start of Step 3 to confirm variable values
 echo -e "${YELLOW}DEBUG (Step 3): DRIVE='${DRIVE}', DOTFILES_TEMP_NVME_DIR='${DOTFILES_TEMP_NVME_DIR}'${NOCOLOR}"
 
 execute_command "Create /mnt/home/andres directory" "mkdir -p /mnt/home/andres" "false"
-# FIX: Use explicit braces and quotes to ensure variable expansion
 execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p \"${DOTFILES_TEMP_NVME_DIR}\"" "false"
 
 # Download pkg_official.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_official.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-# FIX: Use explicit braces and quotes for all path variables
 execute_command "Download pkg_official.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" \"${PKG_OFFICIAL_URL}\"" "false"
-# FIX: Use explicit braces and quotes for all path variables
 execute_command "Verify pkg_official.txt download" "[ ! -f \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" ] && exit 1" "false"
 
 # Download pkg_aur.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-# FIX: Use explicit braces and quotes for all path variables
 execute_command "Download pkg_aur.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" \"${PKG_AUR_URL}\"" "false"
-# FIX: Use explicit braces and quotes for all path variables
 execute_command "Verify pkg_aur.txt download" "[ ! -f \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" ] && exit 1" "false"
 
 
@@ -362,7 +361,6 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
-# FIX: Use explicit braces and quotes for all path variables
 execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\"" "false"
 
 # Step 6-B: Install AUR Helper (Yay)
@@ -524,8 +522,7 @@ arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
         exit 1 # Exit this chroot block if pkg_aur.txt is missing
     fi
 
-    # FIX: Use explicit braces and quotes for all path variables
-    if ! execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"${pkg_aur_path}\"" "true"; then
+    execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"${pkg_aur_path}\"" "true"; then
         echo "Warning: Some AUR packages failed to install."
         # Don't exit here, allow main script to continue, as user chose to skip or some packages might be non-critical.
     fi
