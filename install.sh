@@ -149,7 +149,8 @@ execute_command "Set console font in live environment" "setfont ter-v16n" "true"
 
 # Step 2-B: Install the base system and essential packages
 echo -e "${YELLOW}Installing base system with pacstrap (output to /mnt/pacstrap.log)...${NOCOLOR}"
-execute_command "Pacstrap base system" "pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log" "false"
+# IMPORTANT: Added base-devel to ensure build tools like debugedit are present early
+execute_command "Pacstrap base system and base-devel" "pacstrap /mnt base base-devel linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log" "false"
 
 # Step 2-C: Generate fstab
 execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
@@ -302,27 +303,24 @@ if arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1; then
     UWSM_INSTALLED=true
 else
     echo -e "${RED}Error: 'uwsm' package does not appear to be installed via pacman -Q, despite being in pkg_official.txt.${NOCOLOR}"
-    echo -e "${YELLOW}This might indicate a problem during the 'Install official packages' step or a missing dependency.${NOCOLOR}"
-    if execute_command "Attempt to install uwsm individually" "arch-chroot /mnt pacman -S --noconfirm uwsm" "true"; then
-        echo -e "${GREEN}SUCCESS: 'uwsm' package installed individually.${NOCOLOR}"
-        UWSM_INSTALLED=true
-    else
-        echo -e "${RED}Warning: 'uwsm' package could not be installed individually. uwsm service will be skipped.${NOCOLOR}"
-        UWSM_INSTALLED=false
-    fi
-fi
-
-# Additional check for uwsm.service file if package is reported installed but file is missing
-if [[ "$UWSM_INSTALLED" == "true" ]] && ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
-    echo -e "${RED}Critical inconsistency: 'uwsm' package is reported installed, but uwsm@.service unit file is missing.${NOCOLOR}"
-    echo -e "${YELLOW}Attempting forceful reinstallation of 'uwsm' to correct potential file system issues.${NOCOLOR}"
+    echo -e "${YELLOW}This indicates a problem during the 'Install official packages' step or a missing dependency.${NOCOLOR}"
+    
+    # Try forceful reinstallation directly here, as base-devel should now be present
+    echo -e "${YELLOW}Attempting forceful reinstallation of 'uwsm' to resolve.${NOCOLOR}"
     if execute_command "Force reinstall uwsm" "arch-chroot /mnt pacman -S --noconfirm --overwrite '*' uwsm" "false"; then
-        echo -e "${GREEN}SUCCESS: 'uwsm' forcefully reinstalled.${NOCOLOR}"
-        UWSM_INSTALLED=true # Confirm installation after forceful reinstallation
+        echo -e "${GREEN}SUCCESS: 'uwsm' forcefully reinstalled and now reported as installed.${NOCOLOR}"
+        UWSM_INSTALLED=true
     else
         echo -e "${RED}Error: Forceful reinstallation of 'uwsm' failed. uwsm service cannot be enabled.${NOCOLOR}"
         UWSM_INSTALLED=false
     fi
+fi
+
+# Final check for uwsm.service file after all installation attempts
+if [[ "$UWSM_INSTALLED" == "true" ]] && ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
+    echo -e "${RED}Critical inconsistency: 'uwsm' package is reported installed, but uwsm@.service unit file is still missing.${NOCOLOR}"
+    echo -e "${YELLOW}This indicates a deeper system issue with package file extraction. Skipping uwsm service enablement.${NOCOLOR}"
+    UWSM_INSTALLED=false # Mark as not truly installed for service enablement purposes
 fi
 # ---------------------------------------------------
 
@@ -457,11 +455,11 @@ if [[ "$UWSM_INSTALLED" == "true" ]]; then
         echo -e "${GREEN}uwsm@.service unit file found. Attempting to enable uwsm service.${NOCOLOR}"
         execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
     else
-        # This branch should now only be hit if forceful reinstallation failed, or if UWSM_INSTALLED was never true.
-        echo -e "${RED}Error: uwsm@.service unit file not found even after ensuring uwsm package installation.${NOCOLOR}"
-        echo -e "${YELLOW}Manual debugging is likely required for 'uwsm' installation or service file issues.${NOCOLOR}"
-        # Still offer retry, but it's for diagnosis at this point.
-        execute_command "Attempt to enable uwsm service (final diagnostic attempt)" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+        # This branch should now only be hit if the package was marked installed, but the file is still missing.
+        echo -e "${RED}Error: uwsm@.service unit file not found even after ensuring uwsm package installation (final check).${NOCOLOR}"
+        echo -e "${YELLOW}This indicates a deeper system issue with package file extraction for 'uwsm'. Skipping uwsm service enablement.${NOCOLOR}"
+        # Execute a dummy command to give interactive options
+        execute_command "Attempt to enable uwsm service (diagnostic, likely requires manual fix)" "false" "true"
     fi
 else
     echo -e "${YELLOW}Skipping uwsm service enablement as the 'uwsm' package could not be installed after multiple attempts.${NOCOLOR}"
