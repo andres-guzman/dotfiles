@@ -10,3 +10,8 @@ ttf-juliamono
 swaylock-effects-git
 python-auditok
 python-ffsubsync
+downgrade
+emote
+oh-my-zsh-git
+zsh-theme-powerlevel10k-git
+spicetify-cli
