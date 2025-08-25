@@ -20,6 +20,11 @@ DOTFILES_BARE_DIR="/home/andres/dotfiles"
 PKG_OFFICIAL_URL="https://raw.githubusercontent.com/andres-guzman/dotfiles/main/pkg_official.txt"
 PKG_AUR_URL="https://raw.githubusercontent.com/andres-guzman/dotfiles/main/pkg_aur.txt"
 
+# --- GUARANTEED VARIABLE DEFINITION (moved to top for robustness) ---
+# This is a critical redundant step to guarantee the variable is not empty.
+DOTFILES_TEMP_NVME_DIR="/mnt/home/andres/temp_dotfiles_setup"
+# -------------------------------------------------------------------
+
 # --- New: Interactive Error Handler Function ---
 # This function offers retry/skip/quit options upon command failure.
 # Arguments:
@@ -157,10 +162,6 @@ execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
 echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
-# Re-define DOTFILES_TEMP_NVME_DIR here to ensure it's set right before use
-# This is a critical redundant step to guarantee the variable is not empty.
-DOTFILES_TEMP_NVME_DIR="/mnt/home/andres/temp_dotfiles_setup"
-
 # Debug print at the start of Step 3 to confirm variable values
 echo -e "${YELLOW}DEBUG (Step 3): DRIVE='${DRIVE}', DOTFILES_TEMP_NVME_DIR='${DOTFILES_TEMP_NVME_DIR}'${NOCOLOR}"
 
@@ -170,12 +171,10 @@ execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p \"${DOTF
 # Download pkg_official.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_official.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
 execute_command "Download pkg_official.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" \"${PKG_OFFICIAL_URL}\"" "false"
-execute_command "Verify pkg_official.txt download" "[ ! -f \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" ] && exit 1" "false"
 
 # Download pkg_aur.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
 execute_command "Download pkg_aur.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" \"${PKG_AUR_URL}\"" "false"
-execute_command "Verify pkg_aur.txt download" "[ ! -f \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" ] && exit 1" "false"
 
 
 # ---------------------------------------------------
@@ -189,7 +188,7 @@ arch-chroot /mnt /bin/sh << 'EOF_CHROOT_SCRIPT' # Use single quotes to prevent v
     # Ensure a basic PATH is set for sh
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-    # --- New: Interactive Error Handler Function (inside chroot) ---
+    # --- Interactive Error Handler Function (inside chroot) ---
     handle_failure_chroot() {
         local cmd_description="$1"
         local failed_command="$2"
@@ -451,7 +450,8 @@ EOL_AUR_INSTALL
 echo -e "${YELLOW}Installing AUR packages from pkg_aur.txt...${NOCOLOR}"
 arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
     # Use the same error handling function defined above for AUR packages
-    handle_failure_aur_pkgs() { # Renamed to avoid conflicts if needed, though this is within its own here-doc
+    # FIX: Corrected syntax for handle_failure_aur_pkgs closing brace
+    handle_failure_aur_pkgs() {
         local cmd_description="$1"
         local failed_command="$2"
         local skippable="$3"
@@ -488,7 +488,8 @@ arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
                     echo "Invalid choice. Please enter 'r', 's', or 'q'."
                     ;;
             esac
-        }
+        done
+    }
 
     execute_command_aur_pkgs() {
         local cmd_description="$1"
@@ -518,14 +519,12 @@ arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
     # Assuming $DOTFILES_TEMP_NVME_DIR is correctly set and readable within chroot
     local pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
     if [ ! -f "$pkg_aur_path" ]; then
-        echo "Error: pkg_aur.txt not found at $pkg_aur_path. Cannot install AUR packages."
+        echo "Error: pkg_aur_path not found at $pkg_aur_path. Cannot install AUR packages."
         exit 1 # Exit this chroot block if pkg_aur.txt is missing
     fi
 
-    execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"${pkg_aur_path}\"" "true"; then
-        echo "Warning: Some AUR packages failed to install."
-        # Don't exit here, allow main script to continue, as user chose to skip or some packages might be non-critical.
-    fi
+    execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"${pkg_aur_path}\"" "true"
+    # No 'then' block here; the execute_command_aur_pkgs will handle success/failure interactively
 EOL_AUR_PACKAGES
 
 # ---------------------------------------------------
@@ -535,6 +534,7 @@ echo -e "${CYAN}--- Step 7: Dotfile Restoration ---${NOCOLOR}"
 echo -e "${YELLOW}Setting up bare dotfiles repository and restoring configurations to /home/andres/...${NOCOLOR}"
 arch-chroot /mnt bash << 'EOL_DOTFILES'
     # Re-define error handling functions for this chroot block
+    # FIX: Corrected syntax for handle_failure_dotfiles closing brace
     handle_failure_dotfiles() {
         local cmd_description="$1"
         local failed_command="$2"
@@ -572,7 +572,8 @@ arch-chroot /mnt bash << 'EOL_DOTFILES'
                     echo "Invalid choice. Please enter 'r', 's', or 'q'."
                     ;;
             esac
-        }
+        done
+    }
 
     execute_command_dotfiles() {
         local cmd_description="$1"
@@ -593,7 +594,7 @@ arch-chroot /mnt bash << 'EOL_DOTFILES'
                         echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
                         exit 1
                     fi
-                }
+                fi # FIX: Closing 'fi' for handle_failure_dotfiles
             fi
         done
     }
