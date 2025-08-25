@@ -221,7 +221,11 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     useradd -m andres || { echo "Error: Failed to create user 'andres'."; exit 1; }
     echo "andres:password" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # REMEMBER TO CHANGE PASSWORD
     usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
+    # Configure sudoers for non-interactive use of makepkg later for yay build, if still needed for other tasks
+    echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg" > /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not configure NOPASSWD for makepkg. Some build steps might require password."; }
+    chmod 0440 /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not set permissions for makepkg-nopasswd sudoers file."; }
     sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers || { echo "Error: Failed to uncomment wheel group in sudoers."; exit 1; }
+
 
     # Step 4-C: Install Kernels and other core packages & Enable multilib
     echo "Installing Zen and Stable kernels, microcode, core utilities, and enabling multilib..."
@@ -362,8 +366,11 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
-    # Run makepkg as the 'andres' user
-    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay inside chroot."; exit 1; }
+    
+    # FIX: Run makepkg as the 'andres' user directly using su, avoiding sudo password prompt
+    echo "Building and installing yay as user 'andres'..."
+    su - andres -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
+
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
 
@@ -392,10 +399,9 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     fi
 
     echo "Installing AUR packages listed in \${pkg_aur_path}..."
-    if ! sudo -u andres yay -S --noconfirm - < "\${pkg_aur_path}"; then
-        echo "Warning: Some AUR packages failed to install. Please review the output above."
-        # Don't exit here, allow main script to continue, as some packages might be non-critical.
-    fi
+    # FIX: Run yay as the 'andres' user directly using su, avoiding sudo password prompt
+    su - andres -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
+    
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
 
