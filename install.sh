@@ -97,21 +97,34 @@ execute_command() {
 # ---------------------------------------------------
 # Step 1: Disk Partitioning and Formatting
 # ---------------------------------------------------
+# Set the device variable for clarity.
+# WARNING: This is a destructive operation on this device.
+DRIVE="/dev/nvme0n1"
+
+# --- NEW: Validate DRIVE variable ---
+if [[ -z "$DRIVE" ]]; then
+    echo -e "${RED}Critical Error: The DRIVE variable is empty. Please set it to your NVMe device (e.g., /dev/nvme0n1).${NOCOLOR}"
+    exit 1
+fi
+echo -e "${YELLOW}Starting installation on target drive: ${DRIVE}${NOCOLOR}"
+# -----------------------------------
+
 echo -e "${CYAN}--- Step 1: Disk Partitioning and Formatting ---${NOCOLOR}"
 echo -e "${YELLOW}Partitioning and formatting the drive: ${DRIVE}...${NOCOLOR}"
 
 # Step 1-A: Partition the disk
-execute_command "Create GPT label on ${DRIVE}" "parted -s \"$DRIVE\" mklabel gpt" "false"
-execute_command "Create EFI partition" "parted -s \"$DRIVE\" mkpart primary fat32 1MiB 1025MiB" "false"
-execute_command "Set ESP flag on EFI partition" "parted -s \"$DRIVE\" set 1 esp on" "false"
-execute_command "Create Swap partition" "parted -s \"$DRIVE\" mkpart primary linux-swap 1025MiB 9249MiB" "false"
-execute_command "Create Root partition" "parted -s \"$DRIVE\" mkpart primary ext4 9249MiB 100%" "false"
+# Removed inner quotes around $DRIVE in eval commands to prevent empty string expansion
+execute_command "Create GPT label on ${DRIVE}" "parted -s $DRIVE mklabel gpt" "false"
+execute_command "Create EFI partition" "parted -s $DRIVE mkpart primary fat32 1MiB 1025MiB" "false"
+execute_command "Set ESP flag on EFI partition" "parted -s $DRIVE set 1 esp on" "false"
+execute_command "Create Swap partition" "parted -s $DRIVE mkpart primary linux-swap 1025MiB 9249MiB" "false"
+execute_command "Create Root partition" "parted -s $DRIVE mkpart primary ext4 9249MiB 100%" "false"
 
 # Step 1-B: Format the partitions
-execute_command "Format EFI partition" "mkfs.fat -F32 \"${DRIVE}p1\"" "false"
-execute_command "Format Swap partition" "mkswap \"${DRIVE}p2\"" "false"
-execute_command "Format Root partition" "mkfs.ext4 \"${DRIVE}p3\"" "false"
-execute_command "Enable Swap" "swapon \"${DRIVE}p2\"" "false"
+execute_command "Format EFI partition" "mkfs.fat -F32 ${DRIVE}p1" "false"
+execute_command "Format Swap partition" "mkswap ${DRIVE}p2" "false"
+execute_command "Format Root partition" "mkfs.ext4 ${DRIVE}p3" "false"
+execute_command "Enable Swap" "swapon ${DRIVE}p2" "false"
 
 # ---------------------------------------------------
 # Step 2: Base System Installation
@@ -413,7 +426,7 @@ arch-chroot /mnt bash << 'EOL_AUR_INSTALL' # Use single quotes here to prevent o
     }
 
     # Clone yay-bin with a timeout and interactive retry
-    YAY_CLONE_CMD="git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.com/yay-bin.git /home/andres/yay-bin"
+    YAY_CLONE_CMD="git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin"
     if ! execute_command_aur "Clone yay-bin from AUR" "$YAY_CLONE_CMD" "true"; then
         echo "Warning: Failed to clone yay-bin. AUR packages will not be installed."
         exit 0 # Exit this chroot block, but allow main script to continue
@@ -468,8 +481,7 @@ arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
                     echo "Invalid choice. Please enter 'r', 's', or 'q'."
                     ;;
             esac
-        done
-    }
+        }
 
     execute_command_aur_pkgs() {
         local cmd_description="$1"
@@ -554,8 +566,7 @@ arch-chroot /mnt bash << 'EOL_DOTFILES'
                     echo "Invalid choice. Please enter 'r', 's', or 'q'."
                     ;;
             esac
-        done
-    }
+        }
 
     execute_command_dotfiles() {
         local cmd_description="$1"
