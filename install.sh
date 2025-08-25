@@ -418,10 +418,17 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# uwsm is now in official repositories, so its service enablement should not depend on AUR status.
-# It should be enabled if the package was successfully installed via pacman.
-# We'll assume successful installation if pacman -S did not return a critical error.
-execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true" # Made skippable for robustness, as service might fail if uwsm wasn't installed for other reasons
+# Check if uwsm.service unit file exists before attempting to enable.
+# This helps diagnose if the 'uwsm' package itself failed to install.
+if arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
+    echo -e "${GREEN}uwsm@.service unit file found. Attempting to enable uwsm service.${NOCOLOR}"
+    execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+else
+    # Command to simulate a failure and provide interactive options
+    echo -e "${RED}Error: uwsm@.service unit file not found at /usr/lib/systemd/system/uwsm@.service.${NOCOLOR}"
+    echo -e "${YELLOW}This indicates the 'uwsm' package might not have been installed correctly via pacman.${NOCOLOR}"
+    execute_command "Verify uwsm package installation and enable service" "arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service && arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+fi
 
 
 # ---------------------------------------------------
