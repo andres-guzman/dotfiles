@@ -113,18 +113,18 @@ echo -e "${CYAN}--- Step 1: Disk Partitioning and Formatting ---${NOCOLOR}"
 echo -e "${YELLOW}Partitioning and formatting the drive: ${DRIVE}...${NOCOLOR}"
 
 # Step 1-A: Partition the disk
-# Removed inner quotes around $DRIVE in eval commands to prevent empty string expansion
-execute_command "Create GPT label on ${DRIVE}" "parted -s $DRIVE mklabel gpt" "false"
-execute_command "Create EFI partition" "parted -s $DRIVE mkpart primary fat32 1MiB 1025MiB" "false"
-execute_command "Set ESP flag on EFI partition" "parted -s $DRIVE set 1 esp on" "false"
-execute_command "Create Swap partition" "parted -s $DRIVE mkpart primary linux-swap 1025MiB 9249MiB" "false"
-execute_command "Create Root partition" "parted -s $DRIVE mkpart primary ext4 9249MiB 100%" "false"
+# Ensure robust variable expansion and quoting
+execute_command "Create GPT label on ${DRIVE}" "parted -s \"${DRIVE}\" mklabel gpt" "false"
+execute_command "Create EFI partition" "parted -s \"${DRIVE}\" mkpart primary fat32 1MiB 1025MiB" "false"
+execute_command "Set ESP flag on EFI partition" "parted -s \"${DRIVE}\" set 1 esp on" "false"
+execute_command "Create Swap partition" "parted -s \"${DRIVE}\" mkpart primary linux-swap 1025MiB 9249MiB" "false"
+execute_command "Create Root partition" "parted -s \"${DRIVE}\" mkpart primary ext4 9249MiB 100%" "false"
 
 # Step 1-B: Format the partitions
-execute_command "Format EFI partition" "mkfs.fat -F32 ${DRIVE}p1" "false"
-execute_command "Format Swap partition" "mkswap ${DRIVE}p2" "false"
-execute_command "Format Root partition" "mkfs.ext4 ${DRIVE}p3" "false"
-execute_command "Enable Swap" "swapon ${DRIVE}p2" "false"
+execute_command "Format EFI partition" "mkfs.fat -F32 \"${DRIVE}p1\"" "false"
+execute_command "Format Swap partition" "mkswap \"${DRIVE}p2\"" "false"
+execute_command "Format Root partition" "mkfs.ext4 \"${DRIVE}p3\"" "false"
+execute_command "Enable Swap" "swapon \"${DRIVE}p2\"" "false"
 
 # ---------------------------------------------------
 # Step 2: Base System Installation
@@ -157,23 +157,26 @@ execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
 echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
+# Debug print at the start of Step 3 to confirm variable values
+echo -e "${YELLOW}DEBUG (Step 3): DRIVE='${DRIVE}', DOTFILES_TEMP_NVME_DIR='${DOTFILES_TEMP_NVME_DIR}'${NOCOLOR}"
+
 execute_command "Create /mnt/home/andres directory" "mkdir -p /mnt/home/andres" "false"
-# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
-execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p $DOTFILES_TEMP_NVME_DIR" "false"
+# FIX: Use explicit braces and quotes to ensure variable expansion
+execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p \"${DOTFILES_TEMP_NVME_DIR}\"" "false"
 
 # Download pkg_official.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_official.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR and $PKG_OFFICIAL_URL for correct expansion
-execute_command "Download pkg_official.txt" "curl -f -o $DOTFILES_TEMP_NVME_DIR/pkg_official.txt $PKG_OFFICIAL_URL" "false"
-# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
-execute_command "Verify pkg_official.txt download" "[ ! -f $DOTFILES_TEMP_NVME_DIR/pkg_official.txt ] && exit 1" "false"
+# FIX: Use explicit braces and quotes for all path variables
+execute_command "Download pkg_official.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" \"${PKG_OFFICIAL_URL}\"" "false"
+# FIX: Use explicit braces and quotes for all path variables
+execute_command "Verify pkg_official.txt download" "[ ! -f \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" ] && exit 1" "false"
 
 # Download pkg_aur.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR and $PKG_AUR_URL for correct expansion
-execute_command "Download pkg_aur.txt" "curl -f -o $DOTFILES_TEMP_NVME_DIR/pkg_aur.txt $PKG_AUR_URL" "false"
-# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
-execute_command "Verify pkg_aur.txt download" "[ ! -f $DOTFILES_TEMP_NVME_DIR/pkg_aur.txt ] && exit 1" "false"
+# FIX: Use explicit braces and quotes for all path variables
+execute_command "Download pkg_aur.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" \"${PKG_AUR_URL}\"" "false"
+# FIX: Use explicit braces and quotes for all path variables
+execute_command "Verify pkg_aur.txt download" "[ ! -f \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" ] && exit 1" "false"
 
 
 # ---------------------------------------------------
@@ -359,8 +362,8 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
-# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
-execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < $DOTFILES_TEMP_NVME_DIR/pkg_official.txt" "false"
+# FIX: Use explicit braces and quotes for all path variables
+execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\"" "false"
 
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
@@ -521,8 +524,8 @@ arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
         exit 1 # Exit this chroot block if pkg_aur.txt is missing
     fi
 
-    # FIX: Removed inner quotes around $pkg_aur_path for correct expansion
-    if ! execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < $pkg_aur_path" "true"; then
+    # FIX: Use explicit braces and quotes for all path variables
+    if ! execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"${pkg_aur_path}\"" "true"; then
         echo "Warning: Some AUR packages failed to install."
         # Don't exit here, allow main script to continue, as user chose to skip or some packages might be non-critical.
     fi
@@ -593,7 +596,7 @@ arch-chroot /mnt bash << 'EOL_DOTFILES'
                         echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
                         exit 1
                     fi
-                fi
+                }
             fi
         done
     }
@@ -603,11 +606,11 @@ arch-chroot /mnt bash << 'EOL_DOTFILES'
     local DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
     local REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
 
-    execute_command_dotfiles "Initialize bare dotfiles repository" "git init --bare \"$DOTFILES_BARE_DIR_CHROOT\"" "false"
-    execute_command_dotfiles "Configure git for dotfiles" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres config --local status.showUntrackedFiles no" "false"
-    execute_command_dotfiles "Add origin remote to bare dotfiles repo" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres remote add origin \"$REPO_URL_CHROOT\"" "false"
-    execute_command_dotfiles "Fetch from origin remote" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres fetch origin main" "false"
-    execute_command_dotfiles "Checkout main branch from bare dotfiles repo" "git --git-dir=\"$DOTFILES_BARE_DIR_CHROOT\" --work-tree=/home/andres checkout --force main" "false"
+    execute_command_dotfiles "Initialize bare dotfiles repository" "git init --bare \"${DOTFILES_BARE_DIR_CHROOT}\"" "false"
+    execute_command_dotfiles "Configure git for dotfiles" "git --git-dir=\"${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres config --local status.showUntrackedFiles no" "false"
+    execute_command_dotfiles "Add origin remote to bare dotfiles repo" "git --git-dir=\"${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres remote add origin \"${REPO_URL_CHROOT}\"" "false"
+    execute_command_dotfiles "Fetch from origin remote" "git --git-dir=\"${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres fetch origin main" "false"
+    execute_command_dotfiles "Checkout main branch from bare dotfiles repo" "git --git-dir=\"${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres checkout --force main" "false"
 
     echo "Adjusting dotfile locations if necessary..."
     # Move fonts
@@ -646,7 +649,7 @@ execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@an
 echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
 echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
 
-execute_command "Clean up temporary dotfiles directory" "rm -rf \"$DOTFILES_TEMP_NVME_DIR\"" "true"
+execute_command "Clean up temporary dotfiles directory" "rm -rf \"${DOTFILES_TEMP_NVME_DIR}\"" "true"
 execute_command "Unmount /mnt" "umount -R /mnt" "false"
 
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
