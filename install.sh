@@ -71,6 +71,13 @@ pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr 2>&1 |
 echo -e "${YELLOW}Generating fstab...${NOCOLOR}"
 genfstab -U /mnt >> /mnt/etc/fstab || { echo -e "${RED}Error: Failed to generate fstab.${NOCOLOR}"; exit 1; }
 
+# Install terminus-font and set console font for the live environment
+echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
+pacman -Sy --noconfirm terminus-font || { echo -e "${RED}Error: Failed to install terminus-font in live environment.${NOCOLOR}"; exit 1; }
+echo -e "${YELLOW}Setting console font to ter-v16n...${NOCOLOR}"
+setfont ter-v16n || { echo -e "${RED}Error: Failed to set console font in live environment.${NOCOLOR}"; exit 1; }
+
+
 # ---------------------------------------------------
 # Step 3: Prepare Dotfiles for Chroot
 # ---------------------------------------------------
