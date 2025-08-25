@@ -23,7 +23,7 @@ echo -e "${YELLOW}Cloning your dotfiles repository...${NOCOLOR}"
 # Ensure we're in a suitable directory for cloning if not running from dotfiles parent
 # This script is meant to be run from outside the dotfiles directory,
 # as it will clone it into the current working directory.
-git clone --bare "$REPO_URL" "$DOTFILES_DIR"
+git clone --bare "$REPO_URL" "$DOTFILES_DIR" || { echo -e "${RED}Error: Failed to clone dotfiles repository. Ensure it's public or you've configured SSH keys/PATs for git cloning.${NOCOLOR}"; exit 1; }
 
 # ---------------------------------------------------
 # Step 2: Disk Partitioning and Formatting
@@ -109,8 +109,8 @@ arch-chroot /mnt << EOF
     # Step 4-C: Install Kernels and other core packages
     echo -e "${YELLOW}Installing Zen and Stable kernels, microcode, and core utilities...${NOCOLOR}"
     pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode || { echo -e "${RED}Error: Failed to install kernels and microcode.${NOCOLOR}"; exit 1; }
-    # uwsm and zsh will be installed later as part of the official packages list
-    pacman -S --noconfirm git sudo networkmanager nano efibootmgr systemd-boot pipewire pipewire-pulse wireplumber || { echo -e "${RED}Error: Failed to install core utilities and audio packages.${NOCOLOR}"; exit 1; }
+    # Removed git, sudo, networkmanager, nano, efibootmgr, systemd-boot as they are either in pacstrap or not actual package names.
+    pacman -S --noconfirm pipewire pipewire-pulse wireplumber || { echo -e "${RED}Error: Failed to install core audio packages.${NOCOLOR}"; exit 1; }
 
     # Step 4-D: Bootloader Configuration
     echo -e "${YELLOW}Configuring systemd-boot...${NOCOLOR}"
@@ -118,18 +118,18 @@ arch-chroot /mnt << EOF
 
     TODAY=$(date +%Y-%m-%d)
 
-    echo "default ${TODAY}_linux-zen.conf" > /boot/loader/loader.conf
+    echo "default ${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo -e "${RED}Error: Failed to create loader.conf.${NOCOLOR}"; exit 1; }
     echo "timeout  0" >> /boot/loader/loader.conf
     echo "console-mode max" >> /boot/loader/loader.conf
     echo "editor   no" >> /boot/loader/loader.conf
 
-    echo "title    Arch Linux Zen" > "/boot/loader/entries/${TODAY}_linux-zen.conf"
+    echo "title    Arch Linux Zen" > "/boot/loader/entries/${TODAY}_linux-zen.conf" || { echo -e "${RED}Error: Failed to create linux-zen boot entry.${NOCOLOR}"; exit 1; }
     echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
     echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
     echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
     echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
 
-    echo "title    Arch Linux" > "/boot/loader/entries/${TODAY}_linux.conf"
+    echo "title    Arch Linux" > "/boot/loader/entries/${TODAY}_linux.conf" || { echo -e "${RED}Error: Failed to create linux boot entry.${NOCOLOR}"; exit 1; }
     echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/${TODAY}_linux.conf"
     echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
     echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
@@ -153,9 +153,9 @@ mkdir -p /mnt/Documents /mnt/Videos /mnt/Backup || { echo -e "${RED}Error: Faile
 
 # Get the UUIDs for your three hard drives
 # Note: These UUIDs must be stable and the devices must be present.
-DOCS_UUID=$(blkid -s UUID -o value /dev/sda) || { echo -e "${RED}Error: /dev/sda not found or UUID not readable.${NOCOLOR}"; exit 1; }
-VIDEOS_UUID=$(blkid -s UUID -o value /dev/sdb) || { echo -e "${RED}Error: /dev/sdb not found or UUID not readable.${NOCOLOR}"; exit 1; }
-BACKUP_UUID=$(blkid -s UUID -o value /dev/sdc) || { echo -e "${RED}Error: /dev/sdc not found or UUID not readable.${NOCOLOR}"; exit 1; }
+DOCS_UUID=$(blkid -s UUID -o value /dev/sda) || { echo -e "${RED}Error: /dev/sda not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
+VIDEOS_UUID=$(blkid -s UUID -o value /dev/sdb) || { echo -e "${RED}Error: /dev/sdb not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
+BACKUP_UUID=$(blkid -s UUID -o value /dev/sdc) || { echo -e "${RED}Error: /dev/sdc not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
 
 # Add the entries to fstab.
 echo "" >> /mnt/etc/fstab
