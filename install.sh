@@ -158,17 +158,22 @@ echo -e "${CYAN}--- Step 3: Preparing dotfiles for chroot access ---${NOCOLOR}"
 echo -e "${YELLOW}Downloading package lists directly to NVMe for chroot access...${NOCOLOR}"
 
 execute_command "Create /mnt/home/andres directory" "mkdir -p /mnt/home/andres" "false"
-execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p \"$DOTFILES_TEMP_NVME_DIR\"" "false"
+# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
+execute_command "Create temporary dotfiles directory on NVMe" "mkdir -p $DOTFILES_TEMP_NVME_DIR" "false"
 
 # Download pkg_official.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_official.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-execute_command "Download pkg_official.txt" "curl -f -o \"$DOTFILES_TEMP_NVME_DIR/pkg_official.txt\" \"$PKG_OFFICIAL_URL\"" "false"
-execute_command "Verify pkg_official.txt download" "[ ! -f \"$DOTFILES_TEMP_NVME_DIR/pkg_official.txt\" ] && exit 1" "false"
+# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR and $PKG_OFFICIAL_URL for correct expansion
+execute_command "Download pkg_official.txt" "curl -f -o $DOTFILES_TEMP_NVME_DIR/pkg_official.txt $PKG_OFFICIAL_URL" "false"
+# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
+execute_command "Verify pkg_official.txt download" "[ ! -f $DOTFILES_TEMP_NVME_DIR/pkg_official.txt ] && exit 1" "false"
 
 # Download pkg_aur.txt directly to the NVMe drive with robust error handling
 echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
-execute_command "Download pkg_aur.txt" "curl -f -o \"$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt\" \"$PKG_AUR_URL\"" "false"
-execute_command "Verify pkg_aur.txt download" "[ ! -f \"$DOTFILES_TEMP_NVME_DIR/pkg_aur.txt\" ] && exit 1" "false"
+# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR and $PKG_AUR_URL for correct expansion
+execute_command "Download pkg_aur.txt" "curl -f -o $DOTFILES_TEMP_NVME_DIR/pkg_aur.txt $PKG_AUR_URL" "false"
+# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
+execute_command "Verify pkg_aur.txt download" "[ ! -f $DOTFILES_TEMP_NVME_DIR/pkg_aur.txt ] && exit 1" "false"
 
 
 # ---------------------------------------------------
@@ -354,7 +359,8 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
-execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"$DOTFILES_TEMP_NVME_DIR/pkg_official.txt\"" "false"
+# FIX: Removed inner quotes around $DOTFILES_TEMP_NVME_DIR for correct expansion
+execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < $DOTFILES_TEMP_NVME_DIR/pkg_official.txt" "false"
 
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
@@ -426,7 +432,7 @@ arch-chroot /mnt bash << 'EOL_AUR_INSTALL' # Use single quotes here to prevent o
     }
 
     # Clone yay-bin with a timeout and interactive retry
-    YAY_CLONE_CMD="git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin"
+    YAY_CLONE_CMD="git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.com/yay-bin.git /home/andres/yay-bin"
     if ! execute_command_aur "Clone yay-bin from AUR" "$YAY_CLONE_CMD" "true"; then
         echo "Warning: Failed to clone yay-bin. AUR packages will not be installed."
         exit 0 # Exit this chroot block, but allow main script to continue
@@ -509,14 +515,14 @@ arch-chroot /mnt bash << 'EOL_AUR_PACKAGES'
 
     # Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
     # Assuming $DOTFILES_TEMP_NVME_DIR is correctly set and readable within chroot
-    # We will reconstruct the path.
     local pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
     if [ ! -f "$pkg_aur_path" ]; then
         echo "Error: pkg_aur.txt not found at $pkg_aur_path. Cannot install AUR packages."
         exit 1 # Exit this chroot block if pkg_aur.txt is missing
     fi
 
-    if ! execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < \"$pkg_aur_path\"" "true"; then
+    # FIX: Removed inner quotes around $pkg_aur_path for correct expansion
+    if ! execute_command_aur_pkgs "Install AUR packages with Yay" "sudo -u andres yay -S --noconfirm - < $pkg_aur_path" "true"; then
         echo "Warning: Some AUR packages failed to install."
         # Don't exit here, allow main script to continue, as user chose to skip or some packages might be non-critical.
     fi
