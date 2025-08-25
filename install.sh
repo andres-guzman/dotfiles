@@ -219,7 +219,7 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     # Step 4-B: User and Sudo Configuration
     echo "Creating user 'andres' and configuring sudo..."
     useradd -m andres || { echo "Error: Failed to create user 'andres'."; exit 1; }
-    echo "andres:password" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # REMEMBER TO CHANGE PASSWORD
+    echo "andres:armoniac" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # PASSWORD SET TO 'armoniac'
     usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
     
     # Configure sudoers for NOPASSWD for makepkg, essential for non-interactive builds.
@@ -461,6 +461,6 @@ echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
 echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
 
 execute_command "Clean up temporary dotfiles directory" "rm -rf \"${DOTFILES_TEMP_NVME_DIR}\"" "true"
-execute_command "Unmount /mnt" "umount -R /mnt" "false"
+execute_command "Unmount -R /mnt" "umount -R /mnt" "false" # Corrected umount command description
 
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
