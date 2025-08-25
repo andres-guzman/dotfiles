@@ -79,7 +79,6 @@ lsp-plugins
 openrgb
 rsync
 telegram-desktop
-uwsm
 adwaita-fonts
 cantarell-fonts
 noto-fonts
