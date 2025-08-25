@@ -294,6 +294,25 @@ echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
 execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\"" "false"
 
+# --- New: Targeted uwsm installation verification ---
+UWSM_INSTALLED=false
+echo -e "${YELLOW}Verifying 'uwsm' package installation...${NOCOLOR}"
+if arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1; then
+    echo -e "${GREEN}SUCCESS: 'uwsm' package is installed.${NOCOLOR}"
+    UWSM_INSTALLED=true
+else
+    echo -e "${RED}Error: 'uwsm' package does not appear to be installed, despite being in pkg_official.txt.${NOCOLOR}"
+    echo -e "${YELLOW}This might indicate a problem during the 'Install official packages' step or a missing dependency.${NOCOLOR}"
+    if execute_command "Attempt to install uwsm individually" "arch-chroot /mnt pacman -S --noconfirm uwsm" "true"; then
+        echo -e "${GREEN}SUCCESS: 'uwsm' package installed individually.${NOCOLOR}"
+        UWSM_INSTALLED=true
+    else
+        echo -e "${RED}Warning: 'uwsm' package could not be installed individually. uwsm service will be skipped.${NOCOLOR}"
+        UWSM_INSTALLED=false
+    fi
+fi
+# ---------------------------------------------------
+
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
 arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
@@ -419,15 +438,20 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
 # Check if uwsm.service unit file exists before attempting to enable.
-# This helps diagnose if the 'uwsm' package itself failed to install.
-if arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
-    echo -e "${GREEN}uwsm@.service unit file found. Attempting to enable uwsm service.${NOCOLOR}"
-    execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+# This depends on the UWSM_INSTALLED flag set in Step 6-A.
+if [[ "$UWSM_INSTALLED" == "true" ]]; then
+    if arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
+        echo -e "${GREEN}uwsm@.service unit file found. Attempting to enable uwsm service.${NOCOLOR}"
+        execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+    else
+        # This state is highly unexpected if UWSM_INSTALLED is true.
+        echo -e "${RED}Critical Error: 'uwsm' package is reported installed, but uwsm@.service unit file is missing.${NOCOLOR}"
+        echo -e "${YELLOW}This indicates a serious system issue. Manual intervention is required.${NOCOLOR}"
+        # We still offer the retry option, but it's unlikely to succeed without manual debugging.
+        execute_command "Attempt to enable uwsm service (diagnostic attempt)" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+    fi
 else
-    # Command to simulate a failure and provide interactive options
-    echo -e "${RED}Error: uwsm@.service unit file not found at /usr/lib/systemd/system/uwsm@.service.${NOCOLOR}"
-    echo -e "${YELLOW}This indicates the 'uwsm' package might not have been installed correctly via pacman.${NOCOLOR}"
-    execute_command "Verify uwsm package installation and enable service" "arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service && arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
+    echo -e "${YELLOW}Skipping uwsm service enablement as the 'uwsm' package could not be installed.${NOCOLOR}"
 fi
 
 
