@@ -1,4 +1,5 @@
 hyprland
+uwsm
 rofi-wayland
 dunst
 waybar
