@@ -305,23 +305,55 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
-execute_command "Install official packages" "arch-chroot /mnt pacman -S --noconfirm - < \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\"" "false"
 
-# --- New: Targeted uwsm installation verification and forceful reinstallation ---
-# Simplified uwsm check as it is an official package, any issues are now critical installation failures.
-echo -e "${YELLOW}Verifying 'uwsm' package installation and service file presence...${NOCOLOR}"
-if ! arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1 || ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
-    echo -e "${RED}Error: 'uwsm' package or its service unit file is missing/corrupted.${NOCOLOR}"
-    echo -e "${YELLOW}Attempting forceful reinstallation of 'uwsm' to resolve.${NOCOLOR}"
-    execute_command "Force reinstall uwsm" "arch-chroot /mnt pacman -S --noconfirm --overwrite '*' uwsm" "false"
-    # Re-check after forceful reinstall
-    if ! arch-chroot /mnt pacman -Q uwsm >/dev/null 2>&1 || ! arch-chroot /mnt test -f /usr/lib/systemd/system/uwsm@.service; then
-        echo -e "${RED}Critical Error: 'uwsm' package or its service file could not be installed/restored even after forceful reinstallation. This requires manual debugging.${NOCOLOR}"
-        exit 1 # Exit, as uwsm is critical for your setup.
+# Filter uwsm from pkg_official.txt temporarily for the main pacman -S
+echo -e "${YELLOW}Installing official packages (excluding uwsm) from pkg_official.txt...${NOCOLOR}"
+execute_command "Install official packages (excluding uwsm)" "grep -v '^uwsm$' \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
+
+# --- Dedicated uwsm installation block ---
+echo -e "${YELLOW}Attempting robust uwsm installation...${NOCOLOR}"
+arch-chroot /mnt /bin/bash << 'EOF_UWSM_INSTALL'
+    set -e
+    set -o pipefail
+    
+    UWSM_BROKEN=false
+    if pacman -Q uwsm >/dev/null 2>&1; then
+        echo "uwsm package is reported installed by pacman -Q."
+        if ! test -f /usr/lib/systemd/system/uwsm@.service; then
+            echo "Warning: uwsm@.service unit file is missing despite package being installed. Marking as broken."
+            UWSM_BROKEN=true
+        else
+            echo "uwsm@.service unit file found."
+        fi
+    else
+        echo "uwsm package is not currently installed."
+        UWSM_BROKEN=true # If not installed, we treat it as needing a fresh install
     fi
-else
-    echo -e "${GREEN}SUCCESS: 'uwsm' package and service file confirmed present.${NOCOLOR}"
-fi
+
+    if [ "$UWSM_BROKEN" = true ]; then
+        echo "Attempting to remove uwsm before clean reinstallation if it exists."
+        pacman -Rns uwsm --noconfirm >/dev/null 2>&1 || true # Remove if it's there and broken, ignore if not found
+        echo "Attempting clean reinstallation of uwsm."
+        if pacman -S uwsm --noconfirm; then
+            echo "SUCCESS: uwsm package reinstalled successfully."
+        else
+            echo "CRITICAL ERROR: Failed to install uwsm even after forced reinstallation attempt. This requires manual intervention."
+            exit 1 # Exit on critical uwsm failure
+        fi
+    else
+        echo "uwsm package found and appears functional. No reinstallation needed."
+    fi
+
+    # Final attempt to enable uwsm service
+    echo "Attempting to enable uwsm@andres.service..."
+    if systemctl enable uwsm@andres.service; then
+        echo "SUCCESS: uwsm@andres.service enabled."
+    else
+        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
+        # Not a critical exit here, as the package itself is installed, but a warning
+    fi
+    systemctl daemon-reload # Always reload daemon to ensure systemd picks up new/changed units
+EOF_UWSM_INSTALL
 # ---------------------------------------------------
 
 # Step 6-B: Install AUR Helper (Yay)
@@ -386,9 +418,9 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
         exit 0 # Exit this chroot block gracefully, no AUR packages to install
     fi
 
-    echo "Installing AUR packages listed in \${pkg_aur_path} using yay as root..."
-    # FIX: Run yay -S as the 'root' user within the chroot directly, to avoid sudo password prompts.
-    yay -S --noconfirm - < "\${pkg_aur_path}" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
+    echo "Installing AUR packages listed in \${pkg_aur_path} using yay as root (non-interactively)..."
+    # FIX: Run yay -S as the 'root' user within the chroot directly, piping 'yes' to handle any prompts.
+    yes | yay -S --noconfirm - < "\${pkg_aur_path}" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
     
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
@@ -443,16 +475,11 @@ EOL_DOTFILES
 # Step 8: Post-Installation User Configuration and Service Activation
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Activation ---${NOCOLOR}"
-echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOCOLOR}"
+echo -e "${YELLOW}Setting default shell to Zsh...${NOCOLOR}"
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# FIX: Directly enable uwsm service. It should be installed via official packages.
-echo -e "${YELLOW}Attempting to enable uwsm service...${NOCOLOR}"
-execute_command "Enable uwsm service" "arch-chroot /mnt systemctl enable uwsm@andres.service" "true"
-# After enabling, force systemd to reload its units to pick up any changes
-execute_command "Reload systemd daemon" "arch-chroot /mnt systemctl daemon-reload" "true"
-
+# uwsm service enablement is now part of Step 6-A dedicated block.
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
@@ -461,6 +488,6 @@ echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
 echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
 
 execute_command "Clean up temporary dotfiles directory" "rm -rf \"${DOTFILES_TEMP_NVME_DIR}\"" "true"
-execute_command "Unmount -R /mnt" "umount -R /mnt" "false" # Corrected umount command description
+execute_command "Unmount -R /mnt" "umount -R /mnt" "false"
 
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
