@@ -62,6 +62,12 @@ mount "${DRIVE}p3" /mnt || { echo -e "${RED}Error: Failed to mount Root partitio
 mkdir -p /mnt/boot || { echo -e "${RED}Error: Failed to create /mnt/boot directory.${NOCOLOR}"; exit 1; }
 mount "${DRIVE}p1" /mnt/boot || { echo -e "${RED}Error: Failed to mount EFI partition.${NOCOLOR}"; exit 1; }
 
+# Install terminus-font and set console font for the live environment (EARLIEST POSSIBLE)
+echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
+pacman -Sy --noconfirm terminus-font || { echo -e "${RED}Error: Failed to install terminus-font in live environment.${NOCOLOR}"; exit 1; }
+echo -e "${YELLOW}Setting console font to ter-v16n...${NOCOLOR}"
+setfont ter-v16n || { echo -e "${RED}Error: Failed to set console font in live environment.${NOCOLOR}"; exit 1; }
+
 # Step 2-B: Install the base system and essential packages
 # Adding verbose output for pacstrap to a log file on the NVMe.
 echo -e "${YELLOW}Installing base system with pacstrap (output to /mnt/pacstrap.log)...${NOCOLOR}"
@@ -70,12 +76,6 @@ pacstrap /mnt base linux-firmware git sudo networkmanager nano efibootmgr 2>&1 |
 # Step 2-C: Generate fstab
 echo -e "${YELLOW}Generating fstab...${NOCOLOR}"
 genfstab -U /mnt >> /mnt/etc/fstab || { echo -e "${RED}Error: Failed to generate fstab.${NOCOLOR}"; exit 1; }
-
-# Install terminus-font and set console font for the live environment
-echo -e "${YELLOW}Installing terminus-font for console display...${NOCOLOR}"
-pacman -Sy --noconfirm terminus-font || { echo -e "${RED}Error: Failed to install terminus-font in live environment.${NOCOLOR}"; exit 1; }
-echo -e "${YELLOW}Setting console font to ter-v16n...${NOCOLOR}"
-setfont ter-v16n || { echo -e "${RED}Error: Failed to set console font in live environment.${NOCOLOR}"; exit 1; }
 
 
 # ---------------------------------------------------
@@ -163,10 +163,8 @@ arch-chroot /mnt /bin/sh << EOF_CHROOT_SCRIPT
     pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo "Error: Failed to install core audio and zsh packages."; exit 1; }
 
     # Enable multilib repository
-    # Using a simpler sed command to uncomment [multilib] and its Include line.
-    # This assumes the Include line is immediately after [multilib].
-    sed -i '/\[multilib\]/{n;s/^#//}' /etc/pacman.conf || { echo "Error: Failed to uncomment multilib section (Include line) in pacman.conf."; exit 1; }
-    sed -i '/\[multilib\]/s/^#//' /etc/pacman.conf || { echo "Error: Failed to uncomment [multilib] header in pacman.conf."; exit 1; }
+    # More robust sed command to uncomment both [multilib] and its Include line
+    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/ { s/^#// }' /etc/pacman.conf || { echo "Error: Failed to enable multilib repository in pacman.conf."; exit 1; }
     # Perform a full system update and database synchronization after enabling multilib
     pacman -Syyu --noconfirm || { echo "Error: Failed to synchronize package databases and perform full system update after enabling multilib."; exit 1; }
 
@@ -185,13 +183,13 @@ arch-chroot /mnt /bin/sh << EOF_CHROOT_SCRIPT
 
     echo "title    Arch Linux Zen" > "/boot/loader/entries/\${TODAY}_linux-zen.conf" || { echo "Error: Failed to create linux-zen boot entry."; exit 1; }
     echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux-ucode.img" # Typo fix: intel-ucode.img initrd
     echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
     echo "options  root=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/\${TODAY}_linux-zen.conf"
 
     echo "title    Arch Linux" > "/boot/loader/entries/\${TODAY}_linux.conf" || { echo "Error: Failed to create linux boot entry."; exit 1; }
     echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/\${TODAY}_linux.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux.conf"
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/\${TODAY}_linux-ucode.img" # Typo fix: intel-ucode.img initrd
     echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/\${TODAY}_linux.conf"
     echo "options  root=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/\${TODAY}_linux.conf"
     
@@ -312,5 +310,5 @@ echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up te
 # Clean up the temporary dotfiles directory from NVMe
 rm -rf "$DOTFILES_TEMP_NVME_DIR" || { echo "Warning: Failed to remove temporary dotfiles directory from NVMe. Please clean up manually."; }
 
-umount -R /mnt || { echo -e "${RED}Error: Failed to unmount /mnt. Please unmount manually.${NOCOLOR}"; exit 1; }
+umount -R /mnt || { echo -e "${RED}Error: Failed to unmount /mnt. Please unmount manually."; exit 1; }
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
