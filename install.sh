@@ -183,9 +183,9 @@ execute_command "Download pkg_aur.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/p
 echo -e "${CYAN}--- Step 4: System Configuration (Inside chroot) ---${NOCOLOR}"
 echo -e "${YELLOW}Entering chroot environment to configure the system...${NOCOLOR}"
 
-# Explicitly use /bin/sh for the chroot shell to avoid bash-specific issues
-arch-chroot /mnt /bin/sh << 'EOF_CHROOT_SCRIPT' # Use single quotes to prevent variable expansion now
-    # Ensure a basic PATH is set for sh
+# Changed /bin/sh to /bin/bash for more consistent interactive shell behavior
+arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT' 
+    # Ensure a basic PATH is set for bash
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # --- Interactive Error Handler Function (inside chroot) ---
@@ -594,7 +594,7 @@ arch-chroot /mnt bash << 'EOL_DOTFILES'
                         echo "Critical command '$cmd_description' failed and cannot be skipped. Exiting."
                         exit 1
                     fi
-                fi # FIX: Closing 'fi' for handle_failure_dotfiles
+                fi # Correctly closing 'fi'
             fi
         done
     }
