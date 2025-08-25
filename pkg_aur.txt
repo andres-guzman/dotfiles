@@ -15,3 +15,5 @@ emote
 oh-my-zsh-git
 zsh-theme-powerlevel10k-git
 spicetify-cli
+wlogout
+spotify
