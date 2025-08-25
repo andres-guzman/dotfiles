@@ -13,17 +13,35 @@ NOCOLOR='\033[0m'
 
 # Define the repository URL
 REPO_URL="https://github.com/andres-guzman/dotfiles.git"
-DOTFILES_DIR="$HOME/dotfiles"
+# This will be the location of the *bare* dotfiles repo in the new system's /home/andres/
+DOTFILES_BARE_DIR="/home/andres/dotfiles" 
+
+# IMPORTANT: This script assumes it is run from within a *full working clone*
+# of your dotfiles repository in the live environment.
+# E.g., you first ran:
+#   git clone https://github.com/andres-guzman/dotfiles.git /root/dotfiles_temp
+#   cd /root/dotfiles_temp
+#   ./install.sh
+# The variable DOTFILES_WORK_DIR will point to this temporary clone.
+DOTFILES_WORK_DIR=$(pwd)
 
 # ---------------------------------------------------
-# Step 1: Clone the dotfiles repository
+# Step 1: Prepare for installation
 # ---------------------------------------------------
-echo -e "${CYAN}--- Step 1: Cloning the dotfiles repository ---${NOCOLOR}"
-echo -e "${YELLOW}Cloning your dotfiles repository...${NOCOLOR}"
-# Ensure we're in a suitable directory for cloning if not running from dotfiles parent
-# This script is meant to be run from outside the dotfiles directory,
-# as it will clone it into the current working directory.
-git clone --bare "$REPO_URL" "$DOTFILES_DIR" || { echo -e "${RED}Error: Failed to clone dotfiles repository. Ensure it's public or you've configured SSH keys/PATs for git cloning.${NOCOLOR}"; exit 1; }
+echo -e "${CYAN}--- Step 1: Preparing for installation ---${NOCOLOR}"
+echo -e "${YELLOW}Copying installation files to new root for chroot access...${NOCOLOR}"
+
+# Copy the entire dotfiles working directory into the new root's /home/andres/
+# This makes pkg_official.txt, pkg_aur.txt, and install.sh accessible inside chroot.
+# We'll clean this up later in Step 9.
+mkdir -p /mnt/home/andres/ || { echo -e "${RED}Error: Failed to create /mnt/home/andres directory.${NOCOLOR}"; exit 1; }
+cp -r "$DOTFILES_WORK_DIR" /mnt/home/andres/ || { echo -e "${RED}Error: Failed to copy dotfiles working directory to /mnt/home/andres/.${NOCOLOR}"; exit 1; }
+
+# Update DOTFILES_WORK_DIR to reflect its location inside the /mnt environment
+# when accessed from chroot. It will be /home/andres/dotfiles_temp if the initial clone
+# was named dotfiles_temp. Let's assume it's simply 'dotfiles' after copying.
+DOTFILES_IN_CHROOT_PATH="/home/andres/$(basename "$DOTFILES_WORK_DIR")"
+
 
 # ---------------------------------------------------
 # Step 2: Disk Partitioning and Formatting
@@ -110,7 +128,7 @@ arch-chroot /mnt << EOF
     echo -e "${YELLOW}Installing Zen and Stable kernels, microcode, and core utilities...${NOCOLOR}"
     pacman -Syu --noconfirm linux-zen linux linux-headers linux-zen-headers intel-ucode || { echo -e "${RED}Error: Failed to install kernels and microcode.${NOCOLOR}"; exit 1; }
     # Removed git, sudo, networkmanager, nano, efibootmgr, systemd-boot as they are either in pacstrap or not actual package names.
-    pacman -S --noconfirm pipewire pipewire-pulse wireplumber || { echo -e "${RED}Error: Failed to install core audio packages.${NOCOLOR}"; exit 1; }
+    pacman -S --noconfirm pipewire pipewire-pulse wireplumber zsh || { echo -e "${RED}Error: Failed to install core audio and zsh packages.${NOCOLOR}"; exit 1; }
 
     # Step 4-D: Bootloader Configuration
     echo -e "${YELLOW}Configuring systemd-boot...${NOCOLOR}"
@@ -153,6 +171,7 @@ mkdir -p /mnt/Documents /mnt/Videos /mnt/Backup || { echo -e "${RED}Error: Faile
 
 # Get the UUIDs for your three hard drives
 # Note: These UUIDs must be stable and the devices must be present.
+# It's assumed /dev/sda, /dev/sdb, /dev/sdc are your external drives in this order.
 DOCS_UUID=$(blkid -s UUID -o value /dev/sda) || { echo -e "${RED}Error: /dev/sda not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
 VIDEOS_UUID=$(blkid -s UUID -o value /dev/sdb) || { echo -e "${RED}Error: /dev/sdb not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
 BACKUP_UUID=$(blkid -s UUID -o value /dev/sdc) || { echo -e "${RED}Error: /dev/sdc not found or UUID not readable. Check your external drives are connected and detected.${NOCOLOR}"; exit 1; }
@@ -171,40 +190,72 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 
 # Step 6-A: Install Official Packages
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
-# Use --noconfirm for automated installation. The packages are relative to the user's home directory.
-pacman -Syu --noconfirm - < "$DOTFILES_DIR/pkg_official.txt" || { echo -e "${RED}Error: Failed to install official packages.${NOCOLOR}"; exit 1; }
+# Use --noconfirm for automated installation. Path adjusted to DOTFILES_IN_CHROOT_PATH.
+arch-chroot /mnt pacman -Syu --noconfirm - < "$DOTFILES_IN_CHROOT_PATH/pkg_official.txt" || { echo -e "${RED}Error: Failed to install official packages.${NOCOLOR}"; exit 1; }
 
 # Step 6-B: Install AUR Helper (Yay)
 echo -e "${YELLOW}Installing yay from AUR...${NOCOLOR}"
-# Clone yay-bin and build as the 'andres' user
-git clone https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin || { echo -e "${RED}Error: Failed to clone yay-bin.${NOCOLOR}"; exit 1; }
-chown -R andres:andres /home/andres/yay-bin || { echo -e "${RED}Error: Failed to change ownership of yay-bin.${NOCOLOR}"; exit 1; }
-sudo -u andres bash << EOL
-    cd /home/andres/yay-bin
-    makepkg -si --noconfirm || { echo -e "${RED}Error: Failed to build and install yay.${NOCOLOR}"; exit 1; }
+# Clone yay-bin and build as the 'andres' user in the new root
+arch-chroot /mnt bash << EOL
+    git clone https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin || { echo -e "${RED}Error: Failed to clone yay-bin inside chroot.${NOCOLOR}"; exit 1; }
+    chown -R andres:andres /home/andres/yay-bin || { echo -e "${RED}Error: Failed to change ownership of yay-bin inside chroot.${NOCOLOR}"; exit 1; }
+    # Run makepkg as the 'andres' user
+    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo -e "${RED}Error: Failed to build and install yay inside chroot.${NOCOLOR}"; exit 1; }
 EOL
 
 # Step 6-C: Install AUR Packages with Yay
 echo -e "${YELLOW}Installing AUR packages from pkg_aur.txt...${NOCOLOR}"
-# Ensure yay is run as the 'andres' user to avoid permission issues
-sudo -u andres yay -S --noconfirm - < "$DOTFILES_DIR/pkg_aur.txt" || { echo -e "${RED}Error: Failed to install AUR packages.${NOCOLOR}"; exit 1; }
+# Ensure yay is run as the 'andres' user and uses the correct path to pkg_aur.txt
+arch-chroot /mnt sudo -u andres bash << EOL
+    yay -S --noconfirm - < "$DOTFILES_IN_CHROOT_PATH/pkg_aur.txt" || { echo -e "${RED}Error: Failed to install AUR packages inside chroot.${NOCOLOR}"; exit 1; }
+EOL
 
 # ---------------------------------------------------
 # Step 7: Dotfile Restoration
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 7: Dotfile Restoration ---${NOCOLOR}"
-echo -e "${YELLOW}Restoring dotfiles to /home/andres/...${NOCOLOR}"
-# Create the necessary directories before restoration to ensure paths exist
-mkdir -p /home/andres/.config/systemd/user || { echo -e "${RED}Error: Failed to create user systemd directory.${NOCOLOR}"; exit 1; }
-mkdir -p /home/andres/.local/share/fonts || { echo -e "${RED}Error: Failed to create user fonts directory.${NOCOLOR}"; exit 1; }
-mkdir -p /home/andres/.local/share/themes || { echo -e "${RED}Error: Failed to create user themes directory.${NOCOLOR}"; exit 1; }
-
-# Set up git alias and restore dotfiles as user 'andres'
-# This assumes the dotfiles repo is structured relative to $HOME
-sudo -u andres bash << EOL
-    git --git-dir=$HOME/dotfiles --work-tree=$HOME config --local status.showUntrackedFiles no || { echo -e "${RED}Error: Failed to configure git for dotfiles.${NOCOLOR}"; exit 1; }
-    git --git-dir=$HOME/dotfiles --work-tree=$HOME checkout --force || { echo -e "${RED}Error: Failed to checkout dotfiles.${NOCOLOR}"; exit 1; }
+echo -e "${YELLOW}Setting up bare dotfiles repository and restoring configurations to /home/andres/...${NOCOLOR}"
+# This step initializes the bare repository in the new system's home directory
+arch-chroot /mnt bash << EOL
+    # Initialize the bare repository
+    git init --bare "$DOTFILES_BARE_DIR" || { echo -e "${RED}Error: Failed to initialize bare dotfiles repository.${NOCOLOR}"; exit 1; }
+    # Configure git to use the bare repo for dotfile management
+    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo -e "${RED}Error: Failed to configure git for dotfiles.${NOCOLOR}"; exit 1; }
+    # Checkout files from the previously copied working directory to the user's home
+    # We are checking out from the temporary working directory that was copied into /mnt/home/andres/
+    git --git-dir="$DOTFILES_BARE_DIR" --work-tree=/home/andres checkout --force "$(basename "$DOTFILES_WORK_DIR")" || { echo -e "${RED}Error: Failed to checkout dotfiles from copied working directory.${NOCOLOR}"; exit 1; }
+    # We need to manually copy specific dotfiles to their locations that git won't handle well
+    # or where the repository structure doesn't perfectly match the target.
+    # e.g., if .zshrc is at the root of the repo, it will be checked out to /home/andres/.zshrc
+    # If fonts/ is at the root of the repo, it will be in /home/andres/fonts/ - we will move them.
 EOL
+
+# Assuming user's dotfiles repo structure is mostly flat or directly maps to $HOME/.config etc.
+# If your dotfiles repo has structures like 'fonts/' or 'themes/' directly at its root,
+# these files would be checked out to /home/andres/fonts/ and /home/andres/themes/.
+# We need to move them to their correct XDG locations if that's the case.
+echo -e "${YELLOW}Adjusting dotfile locations if necessary...${NOCOLOR}"
+arch-chroot /mnt bash << EOL
+    # Move fonts to ~/.local/share/fonts (if they were at the root of your dotfiles repo)
+    if [ -d "/home/andres/fonts" ]; then
+        mkdir -p /home/andres/.local/share/fonts
+        mv /home/andres/fonts/* /home/andres/.local/share/fonts/ || { echo -e "${RED}Error: Failed to move fonts.${NOCOLOR}"; exit 1; }
+        rmdir /home/andres/fonts
+    fi
+    # Move themes to ~/.local/share/themes (if they were at the root of your dotfiles repo)
+    if [ -d "/home/andres/themes" ]; then
+        mkdir -p /home/andres/.local/share/themes
+        mv /home/andres/themes/* /home/andres/.local/share/themes/ || { echo -e "${RED}Error: Failed to move themes.${NOCOLOR}"; exit 1; }
+        rmdir /home/andres/themes
+    fi
+    # Move systemd user services to ~/.config/systemd/user (if they were at the root of your dotfiles repo)
+    if [ -d "/home/andres/systemd" ]; then
+        mkdir -p /home/andres/.config/systemd/user
+        mv /home/andres/systemd/* /home/andres/.config/systemd/user/ || { echo -e "${RED}Error: Failed to move systemd user services.${NOCOLOR}"; exit 1; }
+        rmdir /home/andres/systemd
+    fi
+EOL
+
 
 # ---------------------------------------------------
 # Step 8: Post-Installation User Configuration and Service Activation
@@ -214,16 +265,20 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 # Set default shell to Zsh for user 'andres'
 # Zsh is now installed as part of the official packages in Step 6-A
-usermod --shell /usr/bin/zsh andres || { echo -e "${RED}Error: Failed to set default shell for 'andres' to zsh.${NOCOLOR}"; exit 1; }
+arch-chroot /mnt usermod --shell /usr/bin/zsh andres || { echo -e "${RED}Error: Failed to set default shell for 'andres' to zsh.${NOCOLOR}"; exit 1; }
 
 # Enable uwsm service for user 'andres'
 # uwsm is now installed as part of the official packages in Step 6-A
-systemctl enable uwsm@andres.service || { echo -e "${RED}Error: Failed to enable uwsm service.${NOCOLOR}"; exit 1; }
+arch-chroot /mnt systemctl enable uwsm@andres.service || { echo -e "${RED}Error: Failed to enable uwsm service.${NOCOLOR}"; exit 1; }
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
-echo -e "${GREEN}Installation complete. Unmounting partitions.${NOCOLOR}"
+echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
+
+# Clean up the temporary dotfiles working directory from /mnt/home/andres/
+rm -rf /mnt/home/andres/$(basename "$DOTFILES_WORK_DIR") || { echo -e "${RED}Warning: Failed to remove temporary dotfiles working directory from /mnt/home/andres/. Please clean up manually.${NOCOLOR}"; }
+
 umount -R /mnt || { echo -e "${RED}Error: Failed to unmount /mnt. Please unmount manually.${NOCOLOR}"; exit 1; }
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
