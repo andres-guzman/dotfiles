@@ -497,21 +497,9 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# CRITICAL CHANGE: Re-enable uwsm service enablement here.
-# This depends on uwsm having been successfully installed in Step 6-A.
-echo -e "${YELLOW}Attempting to enable uwsm@andres.service...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << 'EOF_UWSM_ENABLE'
-    set -e
-    set -o pipefail
-    systemctl daemon-reload # Reload daemon to ensure systemd picks up uwsm@.service
-    if systemctl enable uwsm@andres.service; then
-        echo "SUCCESS: uwsm@andres.service enabled."
-    else
-        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
-        exit 1 # Exit on uwsm service enablement failure
-    fi
-EOF_UWSM_ENABLE
-
+# CRITICAL CHANGE: uwsm service enablement is removed from automated chroot script.
+# It will be enabled manually by the user AFTER reboot and login to the new system.
+echo -e "${YELLOW}Skipping automated uwsm@andres.service enablement. It must be enabled manually after reboot and login.${NOCOLOR}"
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
