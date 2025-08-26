@@ -181,6 +181,17 @@ execute_command "Download pkg_official.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_D
 echo -e "${YELLOW}Attempting to download pkg_aur.txt to ${DOTFILES_TEMP_NVME_DIR}...${NOCOLOR}"
 execute_command "Download pkg_aur.txt" "curl -f -o \"${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt\" \"${PKG_AUR_URL}\"" "false"
 
+# CRITICAL FIX: Add fzf and oh-my-zsh-git to pkg_aur.txt directly here.
+echo -e "${YELLOW}Ensuring 'fzf' and 'oh-my-zsh-git' are in the AUR package list.${NOCOLOR}"
+if ! grep -q "^fzf$" "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"; then
+    echo "fzf" >> "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"
+    echo "Added fzf to AUR package list."
+fi
+if ! grep -q "^oh-my-zsh-git$" "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"; then
+    echo "oh-my-zsh-git" >> "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"
+    echo "Added oh-my-zsh-git to AUR package list."
+fi
+
 
 # ---------------------------------------------------
 # Step 4: System Configuration (Inside chroot)
@@ -436,7 +447,7 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
 
     # --- Zsh Plugin Setup ---
-    echo "Setting up Zsh plugins and fzf local installation..."
+    echo "Setting up Zsh plugins..."
     # Ensure .oh-my-zsh base directory exists and is owned by andres
     mkdir -p /home/andres/.oh-my-zsh/custom/plugins || { echo "Error: Failed to create .oh-my-zsh custom plugins directory."; }
     chown -R andres:andres /home/andres/.oh-my-zsh || { echo "Error: Failed to set ownership for .oh-my-zsh. Continuing."; }
@@ -450,19 +461,8 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     fi
     chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
 
-    # Clone fzf locally and run install script to generate completion
-    if [ ! -d "/home/andres/.fzf" ]; then
-        echo "Cloning fzf locally and installing completion..."
-        git clone --depth 1 https://github.com/junegunn/fzf.git /home/andres/.fzf || { echo "Warning: Failed to clone fzf locally. Continuing."; }
-        # CRITICAL FIX: Run fzf install with --all to generate completion, and pipe 'yes'
-        # Removed --skip-shell which was causing the error.
-        # Verified valid options: --all, --no-fish, --no-bash, --no-key-bindings (from fzf's current install script help)
-        yes | /home/andres/.fzf/install --all --no-fish --no-bash --no-key-bindings || { echo "Warning: Failed to run fzf install script. Continuing."; }
-    else
-        echo "fzf already cloned locally. Skipping."
-    fi
-    chown -R andres:andres /home/andres/.fzf || { echo "Error: Failed to set ownership for .fzf. Continuing."; }
-
+    # fzf is now installed via AUR, so no local cloning/install script needed here.
+    echo "fzf is handled by AUR installation. Skipping local fzf setup."
 
     # Move fonts, themes, systemd user services (ownership should be correct now)
     echo "Adjusting dotfile locations if necessary..."
@@ -492,7 +492,7 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     # This addresses the "command not found" for systemctl --user and permission issues in chroot.
     echo "Creating one-time systemd service for uwsm@andres.service enablement..."
     mkdir -p /etc/systemd/system/ || { echo "Error: Failed to create /etc/systemd/system directory."; exit 1; }
-    # Corrected heredoc syntax and explicit PATH for systemctl
+    # Corrected heredoc syntax, simplified ExecStart, and ensured proper rm -f execution
     cat > /etc/systemd/system/enable-uwsm-on-first-boot.service << 'EOT_UWSM_SERVICE'
 [Unit]
 Description=Enable uwsm@andres.service on first boot
@@ -501,8 +501,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user enable --now uwsm@andres.service || true"
-ExecStartPost=/usr/bin/rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service
+ExecStart=/bin/bash -c "systemctl --user enable --now uwsm@andres.service"
+ExecStartPost=/bin/bash -c "/usr/bin/rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service"
 User=andres
 # CRITICAL: Standard UID for the first user is 1000. Assuming 'andres' gets UID 1000.
 # If this assumption is ever wrong, this part might need adjustment.
@@ -539,69 +539,3 @@ execute_command "Clean up temporary dotfiles directory" "rm -rf \"${DOTFILES_TEM
 execute_command "Unmount -R /mnt" "umount -R /mnt" "false"
 
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
-```
-
----
-
-## Your Steps to Proceed 🛠️
-
-Andres, I deeply regret the previous issues. This script is a fundamental overhaul of the problematic sections. Please follow these steps precisely.
-
-1.  **Update your `install.sh` on GitHub:**
-    * Go to your GitHub repository (`andres-guzman/dotfiles`).
-    * Open the `install.sh` file.
-    * **Replace its entire content** with the script from the Canvas I just provided, titled "Arch Linux Automated Installation Script (Meticulously Corrected)". **This is a significant change, so GitHub will definitely allow you to commit it.**
-2.  **Prepare your Live USB:**
-    * **Reboot your computer** into the Arch Linux live USB environment.
-3.  **Establish Internet Connection:**
-    * Connect to the internet using `iwctl` or `wifi-menu`.
-4.  **Set Keyboard Layout:**
-    * Set your keyboard layout for the live session by typing:
-        ```bash
-        sudo loadkeys la-latin1
-        ```
-5.  **Fix Pacman Keyring:**
-    * Run these three commands exactly as shown:
-        ```bash
-        sudo killall -9 pacman gpg 2>/dev/null || true
-        sudo pacman-key --init
-        sudo pacman-key --populate archlinux && sudo pacman -Sy
-        ```
-6.  **Install Essential Tools (curl, less):**
-    * Install `curl` and `less` so you can download and view your script:
-        ```bash
-        sudo pacman -Sy curl less
-        ```
-7.  **Download Your Script:**
-    * Download your updated `install.sh` from GitHub:
-        ```bash
-        curl -LO https://raw.githubusercontent.com/andres-guzman/dotfiles/main/install.sh
-        ```
-8.  **Make Script Executable:**
-    * Give the script executable permissions:
-        ```bash
-        chmod +x install.sh
-        ```
-9.  **Run the Script:**
-    * Execute the script. Piping the output to `less` will allow you to scroll through it and review for any errors:
-        ```bash
-        sudo ./install.sh 2>&1 | less
-        ```
-    * **Watch this output carefully.** If it pauses and asks for input, or shows a critical error, make note of the exact message.
-10. **Reboot:**
-    * If the script finishes successfully (you'll see the message "You can now reboot into your new system."), then **reboot your computer**.
-        ```bash
-        reboot
-        ```
-
----
-
-### **No Manual Steps After Reboot (This time, it's fully automated)** 🎉
-
-With this version, the special one-time systemd service will handle enabling `uwsm@andres.service` on the very first boot. This means:
-
-* Your system **will auto-login to the `andres` user on TTY1.**
-* The one-time service will then run, enabling `uwsm`.
-* Your `.zprofile` will detect that `uwsm` is active and will **automatically launch Hyprland.**
-
-You should directly boot into your Hyprland desktop environment without any manual intervention after the initial reboot. If this does not happen, or if you see any errors, please provide a clear ima
