@@ -347,7 +347,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # FIX: Run makepkg -si as the 'andres' user directly using su, and relying on NOPASSWD for makepkg.
+    # FIX: Run makepkg -si as the 'andres' user directly using sudo -u, relying on NOPASSWD for makepkg.
     # This ensures yay is installed globally and non-interactively.
     echo "Building and installing yay as user 'andres'..."
     # Explicitly use sudo -u andres with NOPASSWD for makepkg to avoid tty issues, after chown
@@ -410,6 +410,10 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres remote add origin "\${REPO_URL_CHROOT}" || { echo "Error: Failed to add origin remote to bare dotfiles repo."; exit 1; }
     git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres fetch origin main || { echo "Error: Failed to fetch from origin remote."; exit 1; }
     git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres checkout --force main || { echo "Error: Failed to checkout main branch from bare dotfiles repo."; exit 1; }
+
+    # CRITICAL FIX: Ensure /home/andres and its contents are owned by 'andres'
+    echo "Setting correct ownership for /home/andres..."
+    chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
 
     echo "Adjusting dotfile locations if necessary..."
     # Move fonts
