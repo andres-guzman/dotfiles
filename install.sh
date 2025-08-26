@@ -307,13 +307,25 @@ echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR
 echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
 
-# Filter uwsm from pkg_official.txt temporarily for the main pacman -S
-# CRITICAL FIX: Ensure uwsm is NOT installed by pacman -S for now, to isolate the issue.
-OFFICIAL_PACKAGES_EXCLUDING_UWSM=$(grep -v '^uwsm$' "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt")
-execute_command "Install official packages (excluding uwsm)" "echo \"${OFFICIAL_PACKAGES_EXCLUDING_UWSM}\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
+# CRITICAL FIX: Attempt uwsm installation directly and in isolation first.
+# This is a highly problematic package for automated installation.
+echo -e "${YELLOW}Attempting isolated installation of uwsm with direct confirmation...${NOCOLOR}"
+arch-chroot /mnt /bin/bash << 'EOF_UWSM_DIRECT_INSTALL'
+    set -e
+    set -o pipefail
+    echo "Installing uwsm package."
+    # Use pacman -S --noconfirm directly, and pipe 'yes' to handle the prompt specifically for uwsm.
+    if yes | pacman -S uwsm --noconfirm; then
+        echo "SUCCESS: uwsm package installed successfully."
+    else
+        echo "CRITICAL ERROR: Failed to install uwsm even with direct confirmation. This package is uniquely problematic."
+        exit 1 # Critical failure for uwsm.
+    fi
+EOF_UWSM_DIRECT_INSTALL
 
-# --- uwsm installation is now entirely skipped by the script for automated installation. ---
-# It will be installed manually after reboot.
+# Now, install the remaining official packages, excluding uwsm from this list.
+OFFICIAL_PACKAGES_EXCLUDING_UWSM=$(grep -v '^uwsm$' "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt")
+execute_command "Install remaining official packages (excluding uwsm)" "echo \"${OFFICIAL_PACKAGES_EXCLUDING_UWSM}\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
 
 # ---------------------------------------------------
 
@@ -480,9 +492,21 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# uwsm will be installed manually later, so disable the automatic service enablement for now.
-echo -e "${YELLOW}Skipping automatic uwsm@andres.service enablement (will be installed manually later).${NOCOLOR}"
-# Removed the uwsm@andres.service enablement block from here.
+# CRITICAL CHANGE: Re-enable uwsm service enablement here.
+# This depends on uwsm having been successfully installed in Step 6-A.
+echo -e "${YELLOW}Attempting to enable uwsm@andres.service...${NOCOLOR}"
+arch-chroot /mnt /bin/bash << 'EOF_UWSM_ENABLE'
+    set -e
+    set -o pipefail
+    systemctl daemon-reload # Reload daemon to ensure systemd picks up uwsm@.service
+    if systemctl enable uwsm@andres.service; then
+        echo "SUCCESS: uwsm@andres.service enabled."
+    else
+        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
+        exit 1 # Exit on uwsm service enablement failure
+    fi
+EOF_UWSM_ENABLE
+
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
