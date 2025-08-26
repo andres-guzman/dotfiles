@@ -191,6 +191,11 @@ if ! grep -q "^oh-my-zsh-git$" "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"; then
     echo "oh-my-zsh-git" >> "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"
     echo "Added oh-my-zsh-git to AUR package list."
 fi
+# --- FIX: Remove 'wlogout' and 'spotify' from the AUR list to bypass PGP key errors. ---
+# This is a temporary measure as requested by the user.
+echo -e "${YELLOW}Removing 'wlogout' and 'spotify' from the AUR package list as requested to bypass PGP errors.${NOCOLOR}"
+sed -i '/^spotify$/d' "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"
+sed -i '/^wlogout$/d' "${DOTFILES_TEMP_NVME_DIR}/pkg_aur.txt"
 
 
 # ---------------------------------------------------
@@ -434,7 +439,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     # NOPASSWD: ALL should handle any sudo prompts from yay itself.
     # CRITICAL FIX: Ensure yay is called as user 'andres' from a login shell that respects its PATH.
     # Also ensure stdin is explicitly redirected from yes for full non-interactivity.
-    sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin:\$PATH && /usr/bin/yes | /usr/bin/yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "CRITICAL WARNING: Some AUR packages failed to install. Please review the output above. Continuing for other steps."; }
+    sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin:\$PATH && /usr/bin/yes | /usr/bin/yay -S --noconfirm --noeditmenu - < \"\${pkg_aur_path}\"" || { echo "CRITICAL WARNING: Some AUR packages failed to install. Please review the output above. Continuing for other steps."; }
     
 EOL_AUR_PACKAGES
 
@@ -459,16 +464,27 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
     REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
 
-    git init --bare "\${DOTFILES_BARE_DIR_CHROOT}" || { echo "Error: Failed to initialize bare dotfiles repository."; exit 1; }
-    git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo "Error: Failed to configure git for dotfiles."; exit 1; }
-    git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres remote add origin "\${REPO_URL_CHROOT}" || { echo "Error: Failed to add origin remote to bare dotfiles repo."; exit 1; }
-    git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres fetch origin main || { echo "Error: Failed to fetch from origin remote."; exit 1; }
-    git --git-dir="\${DOTFILES_BARE_DIR_CHROOT}" --work-tree=/home/andres checkout --force main || { echo "Error: Failed to checkout main branch from bare dotfiles repo."; exit 1; }
+    # CRITICAL FIX: Ensure the dotfiles directory is created with correct permissions *before* cloning.
+    echo "Ensuring /home/andres directory exists and has correct ownership before dotfile restoration..."
+    mkdir -p /home/andres || { echo "Error: Failed to create /home/andres directory."; exit 1; }
+    chown andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
+    
+    # CRITICAL FIX: Run all git commands as user 'andres' using sudo.
+    echo "Running dotfile git setup as user 'andres'..."
+    sudo -u andres bash -l -c "
+        set -e
+        set -o pipefail
+        
+        # Set git config for user 'andres'
+        git config --global init.defaultBranch main || { echo 'Warning: Failed to set git default branch.'; }
 
-    # CRITICAL FIX: Ensure /home/andres and its contents are owned by 'andres'
-    echo "Setting correct ownership for /home/andres..."
-    chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
-
+        git init --bare \"\${DOTFILES_BARE_DIR_CHROOT}\" || { echo 'Error: Failed to initialize bare dotfiles repository.'; exit 1; }
+        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo 'Error: Failed to configure git for dotfiles.'; exit 1; }
+        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres remote add origin \"\${REPO_URL_CHROOT}\" || { echo 'Error: Failed to add origin remote.'; exit 1; }
+        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres fetch origin main || { echo 'Error: Failed to fetch from origin remote.'; exit 1; }
+        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres checkout --force main || { echo 'Error: Failed to checkout main branch.'; exit 1; }
+    " || { echo "CRITICAL ERROR: Dotfile restoration failed as user 'andres'."; exit 1; }
+    
     # --- Zsh Plugin Setup ---
     echo "Setting up Zsh plugins..."
     # Ensure .oh-my-zsh base directory exists and is owned by andres
