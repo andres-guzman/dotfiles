@@ -347,11 +347,12 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # FIX: Run makepkg -si as the 'root' user within the chroot directly, to avoid sudo password prompts.
+    # FIX: Run makepkg -si as the 'andres' user directly using su, and relying on NOPASSWD for makepkg.
     # This ensures yay is installed globally and non-interactively.
-    echo "Building and installing yay as root..."
-    # Pipe 'yes' to makepkg for any potential prompts
-    yes | (cd /home/andres/yay-bin && makepkg -si --noconfirm) || { echo "Error: Failed to build and install yay as root inside chroot."; exit 1; }
+    echo "Building and installing yay as user 'andres'..."
+    # Explicitly use sudo -u andres with NOPASSWD for makepkg to avoid tty issues, after chown
+    # This also leverages the NOPASSWD rule established earlier.
+    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
@@ -378,9 +379,10 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
         exit 0 # Exit this chroot block gracefully, no AUR packages to install
     fi
 
-    echo "Installing AUR packages listed in \${pkg_aur_path} using yay as root (non-interactively)..."
-    # FIX: Run yay -S as the 'root' user within the chroot directly, piping 'yes' to handle any prompts.
-    yes | yay -S --noconfirm - < "\${pkg_aur_path}" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
+    echo "Installing AUR packages listed in \${pkg_aur_path} using yay as user 'andres' (non-interactively)..."
+    # FIX: Run yay -S as the 'andres' user using sudo -u with NOPASSWD for makepkg/yay
+    # Pipe 'yes' to handle any prompts.
+    yes | sudo -u andres bash -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
     
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
