@@ -455,7 +455,8 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
         echo "Cloning fzf locally and installing completion..."
         git clone --depth 1 https://github.com/junegunn/fzf.git /home/andres/.fzf || { echo "Warning: Failed to clone fzf locally. Continuing."; }
         # CRITICAL FIX: Run fzf install with --all to generate completion, and pipe 'yes'
-        yes | /home/andres/.fzf/install --all --no-fish --no-bash --no-key-bindings --skip-shell || { echo "Warning: Failed to run fzf install script. Continuing."; }
+        # Removed --skip-shell which was causing the error.
+        yes | /home/andres/.fzf/install --all --no-fish --no-bash --no-key-bindings || { echo "Warning: Failed to run fzf install script. Continuing."; }
     else
         echo "fzf already cloned locally. Skipping."
     fi
@@ -511,3 +512,91 @@ execute_command "Clean up temporary dotfiles directory" "rm -rf \"${DOTFILES_TEM
 execute_command "Unmount -R /mnt" "umount -R /mnt" "false"
 
 echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
+```
+
+---
+
+## Your Steps to Proceed 🛠️
+
+Andres, I acknowledge my mistake in not providing the actual changes earlier. I am correcting it now. Please try these steps once more.
+
+1.  **Update your `install.sh` on GitHub:**
+    * Go to your GitHub repository (`andres-guzman/dotfiles`).
+    * Open the `install.sh` file.
+    * Replace its **entire content** with the script from the Canvas I just updated. This will be an actual change, and you will be able to commit it.
+    ---
+
+2.  **Prepare your Live USB:**
+    * **Reboot your computer** into the Arch Linux live USB environment.
+    ---
+
+3.  **Establish Internet Connection:**
+    * Connect to the internet using `iwctl` or `wifi-menu`.
+    ---
+
+4.  **Set Keyboard Layout:**
+    * Set your keyboard layout for the live session by typing:
+        ```bash
+        sudo loadkeys la-latin1
+        ```
+    ---
+
+5.  **Fix Pacman Keyring:**
+    * Run these three commands exactly as shown:
+        ```bash
+        sudo killall -9 pacman gpg 2>/dev/null || true
+        sudo pacman-key --init
+        sudo pacman-key --populate archlinux && sudo pacman -Sy
+        ```
+    ---
+
+6.  **Install Essential Tools (curl, less):**
+    * Install `curl` and `less` so you can download and view your script:
+        ```bash
+        sudo pacman -Sy curl less
+        ```
+    ---
+
+7.  **Download Your Script:**
+    * Download your updated `install.sh` from GitHub:
+        ```bash
+        curl -LO https://raw.githubusercontent.com/andres-guzman/dotfiles/main/install.sh
+        ```
+    ---
+
+8.  **Make Script Executable:**
+    * Give the script executable permissions:
+        ```bash
+        chmod +x install.sh
+        ```
+    ---
+
+9.  **Run the Script:**
+    * Execute the script. Piping the output to `less` will allow you to scroll through it and review for any errors:
+        ```bash
+        sudo ./install.sh 2>&1 | less
+        ```
+    * **Watch this output carefully.** If it pauses and asks for input, or shows a critical error, make note of the exact message.
+    ---
+
+10. **Reboot:**
+    * If the script finishes successfully (you'll see a message like "You can now reboot into your new system."), then **reboot your computer**.
+        ```bash
+        reboot
+        ```
+
+---
+
+## Crucial Step After Reboot (For Hyprland Auto-Start) ⚠️
+
+After your system reboots, it **will automatically log you into a Zsh prompt on TTY1**. To get Hyprland to start:
+
+1.  **You will be at the `andres@archlinux ~ %` prompt.**
+2.  Type this **single command** and press Enter:
+    ```bash
+    systemctl --user enable --now uwsm@andres.service
+    ```
+    * This command enables and immediately starts the `uwsm` user service.
+    * Because your `.zprofile` is set up to launch Hyprland via `uwsm`, Hyprland should then automatically start, and you'll see your desktop environment.
+
+If *any* part of this process fails, please capture the exact error message. I am committed to getting your system worki
