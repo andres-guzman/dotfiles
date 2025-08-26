@@ -305,11 +305,19 @@ fi
 echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR}"
 
 # Step 6-A: Install Official Packages
-echo -e "${YELLOW}Installing official packages from pkg_official.txt (including uwsm now)...${NOCOLOR}"
+echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
 
-# CRITICAL FIX: Re-include uwsm in the main official package installation.
-# The NOPASSWD: ALL rule should now handle any prompts from pacman.
+# CRITICAL FIX: Ensure uwsm is in the official package list.
+# We modify pkg_official.txt in the temporary directory before installing.
+echo -e "${YELLOW}Ensuring 'uwsm' is in the official package list and will be installed via pacman.${NOCOLOR}"
+if ! grep -q "^uwsm$" "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt"; then
+    echo "uwsm" >> "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt"
+    echo "Added uwsm to official package list."
+else
+    echo "uwsm already in official package list."
+fi
+
 OFFICIAL_PACKAGES=$(cat "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt")
 execute_command "Install official packages (including uwsm)" "echo \"${OFFICIAL_PACKAGES}\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
 
@@ -328,7 +336,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
-        if git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
+        # CRITICAL FIX: Ensure git clone is run as user 'andres' and handles potential network issues
+        sudo -u andres git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
             YAY_CLONE_SUCCESS=true
             echo "SUCCESS: Cloned yay-bin from AUR."
             break
@@ -339,7 +348,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     done
 
     if ! \$YAY_CLONE_SUCCESS; then
-        echo "Error: Failed to clone yay-bin after multiple attempts. AUR packages will not be installed."
+        echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts. AUR packages will not be installed."
         echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
         exit 0 # Exit this chroot block gracefully.
     fi
@@ -347,10 +356,10 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ownership for the cloned directory for user 'andres'
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # CRITICAL FIX: Build and install yay as root to bypass any sudo prompts during its build process.
-    # This ensures yay is installed globally and non-interactively.
-    echo "Building and installing yay as root (non-interactively)..."
-    bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "CRITICAL ERROR: Failed to build and install yay as root inside chroot."; exit 1; }
+    # CRITICAL FIX: Build and install yay as user 'andres' (not root) using sudo and NOPASSWD: ALL.
+    # This is the correct, secure, and non-interactive way to build yay.
+    echo "Building and installing yay as user 'andres' (non-interactively)..."
+    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "CRITICAL ERROR: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
