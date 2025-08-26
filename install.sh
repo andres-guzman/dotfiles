@@ -14,7 +14,7 @@ NOCOLOR='\033[0m'
 # Define the repository URL for cloning the bare repo later
 REPO_URL="https://github.com/andres-guzman/dotfiles.git"
 # This will be the location of the *bare* dotfiles repo in the new system's /home/andres/
-DOTFILES_BARE_DIR="/home/andres/dotfiles" 
+DOTFILES_BARE_DIR="/home/andres/dotfiles"
 
 # Define GitHub raw URLs for package lists (assuming they are in the root of your public repo)
 PKG_OFFICIAL_URL="https://raw.githubusercontent.com/andres-guzman/dotfiles/main/pkg_official.txt"
@@ -283,6 +283,28 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     # Step 4-E: Enable getty service for auto-login (uwsm will be enabled later)
     # CRITICAL FIX: Ensure getty is enabled robustly
     systemctl enable getty@tty1.service || { echo "Error: Failed to enable getty service."; exit 1; }
+
+    # CRITICAL FIX: Add a line to .bash_profile to handle autostart
+    # This is a robust way to start the session manager without relying on a temporary systemd service.
+    echo "Creating or updating .bash_profile for autologin and uwsm autostart..."
+    BASH_PROFILE_PATH="/home/andres/.bash_profile"
+    
+    # Check if .bash_profile exists, if not, create it
+    if [ ! -f "\${BASH_PROFILE_PATH}" ]; then
+        touch "\${BASH_PROFILE_PATH}" || { echo "Error: Failed to create .bash_profile."; exit 1; }
+        chown andres:andres "\${BASH_PROFILE_PATH}" || { echo "Error: Failed to set ownership of .bash_profile."; exit 1; }
+    fi
+
+    # Append the autostart logic to .bash_profile
+    # This logic checks if a Wayland session is already active and starts it if not.
+    # NOTE: This ensures it only runs for an interactive login shell.
+    cat >> "\${BASH_PROFILE_PATH}" << 'EOF_BASH_PROFILE'
+if [[ -z "$DISPLAY" && "$XDG_VTNR" -eq 1 ]]; then
+    exec /usr/bin/uwsm
+fi
+EOF_BASH_PROFILE
+    chown andres:andres "\${BASH_PROFILE_PATH}" || { echo "Error: Failed to set ownership of .bash_profile."; exit 1; }
+
 EOF_CHROOT_SCRIPT
 
 echo -e "${YELLOW}Exiting chroot environment...${NOCOLOR}"
@@ -360,15 +382,6 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     echo "Ensuring /home/andres/yay-bin directory exists and is owned by 'andres'..."
     mkdir -p /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to create /home/andres/yay-bin directory as root."; exit 1; }
     chown andres:andres /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to set ownership of /home/andres/yay-bin."; exit 1; }
-
-    # CRITICAL DIAGNOSTICS: Check network and DNS for andres
-    echo "--- Network Diagnostics for yay-bin clone ---"
-    sudo -u andres bash -l -c "echo 'Checking network connectivity as user andres...'"
-    sudo -u andres bash -l -c "ping -c 3 google.com" || echo "Warning: ping to google.com failed as user andres."
-    sudo -u andres bash -l -c "curl -sL --max-time 10 'https://www.google.com' > /dev/null && echo 'HTTP connectivity to google.com OK as user andres.'" || echo "Warning: HTTP connectivity to google.com failed as user andres."
-    sudo -u andres bash -l -c "nslookup aur.archlinux.org" || echo "Warning: DNS resolution for aur.archlinux.org failed as user andres."
-    echo "---------------------------------------------"
-
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
@@ -527,35 +540,11 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     chmod 0440 /etc/sudoers.d/90-andres-nopasswd || { echo "Warning: Could not set permissions for 90-andres-nopasswd sudoers file."; }
     rm -f /etc/sudoers.d/90-andres-install-nopasswd || { echo "Warning: Could not remove temporary broad NOPASSWD file."; }
 
-    # CRITICAL: Prepare a one-time systemd service to enable uwsm@andres.service on first boot.
-    # This addresses the "command not found" for systemctl --user and permission issues in chroot.
-    echo "Creating one-time systemd service for uwsm@andres.service enablement..."
-    mkdir -p /etc/systemd/system/ || { echo "Error: Failed to create /etc/systemd/system directory."; exit 1; }
-    # CRITICAL FIX: Get UID for 'andres' dynamically and use it in DBUS_SESSION_BUS_ADDRESS
-    # This ID will be available in the chroot environment.
-    ANDRES_UID=$(id -u andres) || { echo "Error: Could not get UID for user 'andres'."; exit 1; }
-
-    cat > /etc/systemd/system/enable-uwsm-on-first-boot.service << EOT_UWSM_SERVICE
-[Unit]
-Description=Enable uwsm@andres.service on first boot
-After=network-online.target multi-user.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-# CRITICAL FIX: Use the dynamically obtained UID for D-Bus path and ensure robust PATH.
-# Use 'bash -l -c' to ensure a login shell environment for systemctl --user.
-ExecStart=/bin/bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin:\$PATH && export XDG_RUNTIME_DIR=/run/user/${ANDRES_UID} && DBUS_SESSION_BUS_ADDRESS=unix:path=\${XDG_RUNTIME_DIR}/bus systemctl --user enable --now uwsm@andres.service"
-ExecStartPost=/bin/bash -c "/usr/bin/rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service"
-User=andres
-Environment="HOME=/home/andres"
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOT_UWSM_SERVICE
-    chmod 644 /etc/systemd/system/enable-uwsm-on-first-boot.service || { echo "Error: Failed to set permissions for uwsm enablement service."; exit 1; }
-    systemctl enable enable-uwsm-on-first-boot.service || { echo "Error: Failed to enable one-time uwsm enablement service."; exit 1; }
+    # CRITICAL FIX: Disable any potential uwsm systemd services
+    echo "Disabling uwsm systemd service since autostart is handled by .bash_profile..."
+    systemctl disable --now uwsm@andres.service 2>/dev/null || true
+    systemctl disable --now enable-uwsm-on-first-boot.service 2>/dev/null || true
+    rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service 2>/dev/null || true
 
 EOL_DOTFILES
 
@@ -567,9 +556,6 @@ echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Act
 echo -e "${YELLOW}Setting default shell to Zsh...${NOCOLOR}"
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
-
-# uwsm service enablement is now handled by the one-time service on first boot.
-echo -e "${YELLOW}uwsm@andres.service enablement will be handled by a one-time systemd service on first boot.${NOCOLOR}"
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
