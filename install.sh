@@ -310,32 +310,9 @@ execute_command "Refresh package databases before official package installation"
 echo -e "${YELLOW}Installing official packages (excluding uwsm) from pkg_official.txt...${NOCOLOR}"
 execute_command "Install official packages (excluding uwsm)" "grep -v '^uwsm$' \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
 
-# --- Dedicated uwsm installation block ---
-echo -e "${YELLOW}Attempting robust uwsm installation...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << 'EOF_UWSM_INSTALL'
-    set -e
-    set -o pipefail
-    
-    echo "Checking uwsm status before reinstallation attempt..."
-    # Always attempt a full reinstallation with yes | to handle any prompts
-    echo "Attempting clean reinstallation of uwsm with automatic confirmation."
-    if yes | pacman -S uwsm --noconfirm; then
-        echo "SUCCESS: uwsm package reinstalled successfully."
-    else
-        echo "CRITICAL ERROR: Failed to install uwsm even with automatic confirmation. This is a severe issue."
-        exit 1 # Exit on critical uwsm failure
-    fi
+# --- uwsm is now fully bypassed in this script for automated installation. ---
+# It will be installed manually after reboot.
 
-    # Final attempt to enable uwsm service
-    echo "Attempting to enable uwsm@andres.service..."
-    if systemctl enable uwsm@andres.service; then
-        echo "SUCCESS: uwsm@andres.service enabled."
-    else
-        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
-        # Not a critical exit here, as the package itself is installed, but a warning
-    fi
-    systemctl daemon-reload # Always reload daemon to ensure systemd picks up new/changed units
-EOF_UWSM_INSTALL
 # ---------------------------------------------------
 
 # Step 6-B: Install AUR Helper (Yay)
