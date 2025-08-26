@@ -346,7 +346,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ensure a comprehensive PATH for commands in this chroot block
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin
 
-    YAY_CLONE_RETRIES=3
+    YAY_CLONE_RETRIES=5 # Increased retries
+    YAY_CLONE_SLEEP=10 # Increased sleep time
     YAY_CLONE_SUCCESS=false
 
     # CRITICAL FIX: Explicitly create /home/andres/yay-bin with correct ownership as root,
@@ -354,6 +355,15 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     echo "Ensuring /home/andres/yay-bin directory exists and is owned by 'andres'..."
     mkdir -p /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to create /home/andres/yay-bin directory as root."; exit 1; }
     chown andres:andres /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to set ownership of /home/andres/yay-bin."; exit 1; }
+
+    # CRITICAL DIAGNOSTICS: Check network and DNS for andres
+    echo "--- Network Diagnostics for yay-bin clone ---"
+    sudo -u andres bash -l -c "echo 'Checking network connectivity as user andres...'"
+    sudo -u andres bash -l -c "ping -c 3 google.com" || echo "Warning: ping to google.com failed as user andres."
+    sudo -u andres bash -l -c "curl -sL --max-time 10 'https://www.google.com' > /dev/null && echo 'HTTP connectivity to google.com OK as user andres.'" || echo "Warning: HTTP connectivity to google.com failed as user andres."
+    sudo -u andres bash -l -c "nslookup aur.archlinux.org" || echo "Warning: DNS resolution for aur.archlinux.org failed as user andres."
+    echo "---------------------------------------------"
+
 
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
@@ -363,8 +373,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
             echo "SUCCESS: Cloned yay-bin from AUR."
             break
         else
-            echo "Warning: Failed to clone yay-bin. Retrying in 5 seconds..."
-            sleep 5
+            echo "Warning: Failed to clone yay-bin. Retrying in \${YAY_CLONE_SLEEP} seconds..."
+            sleep "\${YAY_CLONE_SLEEP}"
         fi
     done
 
@@ -424,7 +434,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     # NOPASSWD: ALL should handle any sudo prompts from yay itself.
     # CRITICAL FIX: Ensure yay is called as user 'andres' from a login shell that respects its PATH.
     # Also ensure stdin is explicitly redirected from yes for full non-interactivity.
-    sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$PATH && /usr/bin/yes | /usr/bin/yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "CRITICAL WARNING: Some AUR packages failed to install. Please review the output above. Continuing for other steps."; }
+    sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin:\$PATH && /usr/bin/yes | /usr/bin/yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "CRITICAL WARNING: Some AUR packages failed to install. Please review the output above. Continuing for other steps."; }
     
 EOL_AUR_PACKAGES
 
