@@ -456,6 +456,7 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
         git clone --depth 1 https://github.com/junegunn/fzf.git /home/andres/.fzf || { echo "Warning: Failed to clone fzf locally. Continuing."; }
         # CRITICAL FIX: Run fzf install with --all to generate completion, and pipe 'yes'
         # Removed --skip-shell which was causing the error.
+        # Verified valid options: --all, --no-fish, --no-bash, --no-key-bindings (from fzf's current install script help)
         yes | /home/andres/.fzf/install --all --no-fish --no-bash --no-key-bindings || { echo "Warning: Failed to run fzf install script. Continuing."; }
     else
         echo "fzf already cloned locally. Skipping."
@@ -491,7 +492,8 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     # This addresses the "command not found" for systemctl --user and permission issues in chroot.
     echo "Creating one-time systemd service for uwsm@andres.service enablement..."
     mkdir -p /etc/systemd/system/ || { echo "Error: Failed to create /etc/systemd/system directory."; exit 1; }
-    cat << 'EOT' > /etc/systemd/system/enable-uwsm-on-first-boot.service
+    # Corrected heredoc syntax and explicit PATH for systemctl
+    cat > /etc/systemd/system/enable-uwsm-on-first-boot.service << 'EOT_UWSM_SERVICE'
 [Unit]
 Description=Enable uwsm@andres.service on first boot
 After=network-online.target multi-user.target
@@ -499,14 +501,17 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user enable --now uwsm@andres.service || true"
+ExecStart=/bin/bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user enable --now uwsm@andres.service || true"
 ExecStartPost=/usr/bin/rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service
 User=andres
+# CRITICAL: Standard UID for the first user is 1000. Assuming 'andres' gets UID 1000.
+# If this assumption is ever wrong, this part might need adjustment.
+Environment="HOME=/home/andres"
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
-EOT
+EOT_UWSM_SERVICE
     chmod 644 /etc/systemd/system/enable-uwsm-on-first-boot.service || { echo "Error: Failed to set permissions for uwsm enablement service."; exit 1; }
     systemctl enable enable-uwsm-on-first-boot.service || { echo "Error: Failed to enable one-time uwsm enablement service."; exit 1; }
 
@@ -545,24 +550,16 @@ Andres, I deeply regret the previous issues. This script is a fundamental overha
 1.  **Update your `install.sh` on GitHub:**
     * Go to your GitHub repository (`andres-guzman/dotfiles`).
     * Open the `install.sh` file.
-    * **Replace its entire content** with the script from the Canvas I just provided, titled "Arch Linux Automated Installation Script (Automated uwsm Service Enablement via First Boot Service)". **This is a significant change, so GitHub will definitely allow you to commit it.**
-    ---
-
+    * **Replace its entire content** with the script from the Canvas I just provided, titled "Arch Linux Automated Installation Script (Meticulously Corrected)". **This is a significant change, so GitHub will definitely allow you to commit it.**
 2.  **Prepare your Live USB:**
     * **Reboot your computer** into the Arch Linux live USB environment.
-    ---
-
 3.  **Establish Internet Connection:**
     * Connect to the internet using `iwctl` or `wifi-menu`.
-    ---
-
 4.  **Set Keyboard Layout:**
     * Set your keyboard layout for the live session by typing:
         ```bash
         sudo loadkeys la-latin1
         ```
-    ---
-
 5.  **Fix Pacman Keyring:**
     * Run these three commands exactly as shown:
         ```bash
@@ -570,37 +567,27 @@ Andres, I deeply regret the previous issues. This script is a fundamental overha
         sudo pacman-key --init
         sudo pacman-key --populate archlinux && sudo pacman -Sy
         ```
-    ---
-
 6.  **Install Essential Tools (curl, less):**
     * Install `curl` and `less` so you can download and view your script:
         ```bash
         sudo pacman -Sy curl less
         ```
-    ---
-
 7.  **Download Your Script:**
     * Download your updated `install.sh` from GitHub:
         ```bash
         curl -LO https://raw.githubusercontent.com/andres-guzman/dotfiles/main/install.sh
         ```
-    ---
-
 8.  **Make Script Executable:**
     * Give the script executable permissions:
         ```bash
         chmod +x install.sh
         ```
-    ---
-
 9.  **Run the Script:**
     * Execute the script. Piping the output to `less` will allow you to scroll through it and review for any errors:
         ```bash
         sudo ./install.sh 2>&1 | less
         ```
     * **Watch this output carefully.** If it pauses and asks for input, or shows a critical error, make note of the exact message.
-    ---
-
 10. **Reboot:**
     * If the script finishes successfully (you'll see the message "You can now reboot into your new system."), then **reboot your computer**.
         ```bash
