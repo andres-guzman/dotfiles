@@ -223,8 +223,9 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
     
     # Configure sudoers for NOPASSWD for makepkg, essential for non-interactive builds.
-    echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg" > /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not configure NOPASSWD for makepkg. Some build steps might require password."; }
-    chmod 0440 /etc/sudoers.d/makepkg-nopasswd || { echo "Warning: Could not set permissions for makepkg-nopasswd sudoers file."; }
+    # CRITICAL FIX: Add /usr/bin/yay to NOPASSWD as well
+    echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg, /usr/bin/yay" > /etc/sudoers.d/makepkg-yay-nopasswd || { echo "Warning: Could not configure NOPASSWD for makepkg and yay. Some build steps might require password."; }
+    chmod 0440 /etc/sudoers.d/makepkg-yay-nopasswd || { echo "Warning: Could not set permissions for makepkg-yay-nopasswd sudoers file."; }
     
     # Also uncomment the general wheel group access for sudo
     sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers || { echo "Error: Failed to uncomment wheel group in sudoers."; exit 1; }
@@ -439,10 +440,28 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
 
     # --- Zsh Plugin Setup ---
-    echo "Setting up Zsh plugins..."
-    mkdir -p /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to create zsh-autosuggestions plugin directory."; }
-    git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Warning: Failed to clone zsh-autosuggestions. Continuing."; }
+    echo "Setting up Zsh plugins and fzf local installation..."
+    # Ensure .oh-my-zsh base directory exists and is owned by andres
+    mkdir -p /home/andres/.oh-my-zsh/custom/plugins || { echo "Error: Failed to create .oh-my-zsh custom plugins directory."; }
     chown -R andres:andres /home/andres/.oh-my-zsh || { echo "Error: Failed to set ownership for .oh-my-zsh. Continuing."; }
+
+    # Clone zsh-autosuggestions
+    if [ ! -d "/home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ]; then
+        git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Warning: Failed to clone zsh-autosuggestions. Continuing."; }
+    else
+        echo "zsh-autosuggestions already cloned. Skipping."
+    fi
+    chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
+
+    # Clone fzf locally as expected by some dotfiles
+    if [ ! -d "/home/andres/.fzf" ]; then
+        git clone --depth 1 https://github.com/junegunn/fzf.git /home/andres/.fzf || { echo "Warning: Failed to clone fzf locally. Continuing."; }
+        /home/andres/.fzf/install --all --no-fish --no-zsh --no-bash --no-completion --no-key-bindings --skip-shell || { echo "Warning: Failed to run fzf install script. Continuing."; }
+    else
+        echo "fzf already cloned locally. Skipping."
+    fi
+    chown -R andres:andres /home/andres/.fzf || { echo "Error: Failed to set ownership for .fzf. Continuing."; }
+
 
     # Move fonts, themes, systemd user services (ownership should be correct now)
     echo "Adjusting dotfile locations if necessary..."
