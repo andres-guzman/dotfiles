@@ -222,10 +222,11 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     echo "andres:armoniac" | chpasswd || { echo "Error: Failed to set password for 'andres'."; exit 1; } # PASSWORD SET TO 'armoniac'
     usermod -aG wheel andres || { echo "Error: Failed to add 'andres' to wheel group."; exit 1; }
     
-    # Configure sudoers for NOPASSWD for makepkg, essential for non-interactive builds.
-    # CRITICAL FIX: Add /usr/bin/yay to NOPASSWD as well
-    echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg, /usr/bin/yay" > /etc/sudoers.d/makepkg-yay-nopasswd || { echo "Warning: Could not configure NOPASSWD for makepkg and yay. Some build steps might require password."; }
-    chmod 0440 /etc/sudoers.d/makepkg-yay-nopasswd || { echo "Warning: Could not set permissions for makepkg-yay-nopasswd sudoers file."; }
+    # CRITICAL FIX: Make NOPASSWD more encompassing for the chroot session.
+    # This grants the 'wheel' group (which 'andres' is in) the ability to run any sudo command without a password.
+    # This is temporary for the installation and will be tightened after dotfile restoration.
+    echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-andres-install-nopasswd || { echo "Warning: Could not configure NOPASSWD for entire installation. Some steps might require password."; }
+    chmod 0440 /etc/sudoers.d/90-andres-install-nopasswd || { echo "Warning: Could not set permissions for 90-andres-install-nopasswd sudoers file."; }
     
     # Also uncomment the general wheel group access for sudo
     sed -i '/%wheel ALL=(ALL:ALL) ALL/s/^# //g' /etc/sudoers || { echo "Error: Failed to uncomment wheel group in sudoers."; exit 1; }
@@ -304,14 +305,13 @@ fi
 echo -e "${CYAN}--- Step 6: Hyprland and Other Package Installation ---${NOCOLOR}"
 
 # Step 6-A: Install Official Packages
-echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR}"
+echo -e "${YELLOW}Installing official packages from pkg_official.txt (including uwsm now)...${NOCOLOR}"
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
 
-# CRITICAL FIX: uwsm is uniquely problematic. Remove it from the official package list and the direct installation attempt.
-# It will be installed manually AFTER rebooting into the new system.
-echo -e "${YELLOW}Excluding 'uwsm' from automated official package installation due to persistent issues.${NOCOLOR}"
-OFFICIAL_PACKAGES_EXCLUDING_UWSM=$(grep -v '^uwsm$' "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt")
-execute_command "Install official packages (excluding uwsm)" "echo \"${OFFICIAL_PACKAGES_EXCLUDING_UWSM}\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
+# CRITICAL FIX: Re-include uwsm in the main official package installation.
+# The NOPASSWD: ALL rule should now handle any prompts from pacman.
+OFFICIAL_PACKAGES=$(cat "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt")
+execute_command "Install official packages (including uwsm)" "echo \"${OFFICIAL_PACKAGES}\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
 
 # ---------------------------------------------------
 
@@ -347,11 +347,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ownership and makepkg commands remain. These are critical if yay was cloned.
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # FIX: Run makepkg -si as the 'andres' user directly using sudo -u, relying on NOPASSWD for makepkg.
-    # This ensures yay is installed globally and non-interactively.
+    # Building and installing yay as user 'andres' (NOPASSWD: ALL should handle this)
     echo "Building and installing yay as user 'andres'..."
-    # Explicitly use sudo -u andres with NOPASSWD for makepkg to avoid tty issues, after chown
-    # This also leverages the NOPASSWD rule established earlier.
     sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
@@ -388,8 +385,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     fi
 
     echo "Installing AUR packages listed in \${pkg_aur_path} using yay as user 'andres' (non-interactively)..."
-    # FIX: Run yay -S as the 'andres' user using sudo -u with NOPASSWD for makepkg/yay
-    # Pipe 'yes' to handle any prompts.
+    # NOPASSWD: ALL should handle any sudo prompts from yay itself.
     yes | sudo -u andres bash -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
     
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
@@ -467,6 +463,13 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
         mv /home/andres/systemd/* /home/andres/.config/systemd/user/ 2>/dev/null || { echo "Warning: Failed to move systemd user services. Continuing."; }
         rmdir /home/andres/systemd 2>/dev/null || true
     fi
+
+    # CRITICAL SECURITY STEP: Tighten NOPASSWD rule after dotfile restoration
+    echo "Restoring specific NOPASSWD rule for makepkg and yay only..."
+    echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg, /usr/bin/yay" > /etc/sudoers.d/90-andres-nopasswd || { echo "Warning: Could not restore specific NOPASSWD rule."; }
+    chmod 0440 /etc/sudoers.d/90-andres-nopasswd || { echo "Warning: Could not set permissions for 90-andres-nopasswd sudoers file."; }
+    rm -f /etc/sudoers.d/90-andres-install-nopasswd || { echo "Warning: Could not remove temporary broad NOPASSWD file."; }
+
 EOL_DOTFILES
 
 
@@ -474,12 +477,25 @@ EOL_DOTFILES
 # Step 8: Post-Installation User Configuration and Service Activation
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Activation ---${NOCOLOR}"
-echo -e "${YELLOW}Setting default shell to Zsh...${NOCOLOR}"
+echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOCOLOR}"
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# uwsm will be installed manually AFTER rebooting, so remove this enablement block.
-echo -e "${YELLOW}Skipping automated uwsm service enablement. It will be installed manually after reboot.${NOCOLOR}"
+# CRITICAL CHANGE: Re-enable uwsm service enablement here.
+# This depends on uwsm having been successfully installed in Step 6-A.
+echo -e "${YELLOW}Attempting to enable uwsm@andres.service...${NOCOLOR}"
+arch-chroot /mnt /bin/bash << 'EOF_UWSM_ENABLE'
+    set -e
+    set -o pipefail
+    systemctl daemon-reload # Reload daemon to ensure systemd picks up uwsm@.service
+    if systemctl enable uwsm@andres.service; then
+        echo "SUCCESS: uwsm@andres.service enabled."
+    else
+        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
+        exit 1 # Exit on uwsm service enablement failure
+    fi
+EOF_UWSM_ENABLE
+
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
