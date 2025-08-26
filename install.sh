@@ -58,7 +58,7 @@ handle_failure() {
                     return 1 # Indicate skip
                 else
                     echo -e "${RED}Invalid choice. This critical step cannot be skipped.${NOCOLOR}"
-                fi # CRITICAL FIX: Added missing 'fi' here
+                fi
                 ;;
             q|Q)
                 echo -e "${RED}Quitting installation as requested.${NOCOLOR}"
@@ -346,13 +346,47 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     # Ensure a basic PATH is set for bash
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-    # CRITICAL FIX: Install yay-bin using pacman directly. This assumes yay-bin is in official repos.
-    # This completely bypasses cloning and makepkg for yay-bin, which was a source of errors.
-    echo "Installing yay-bin directly via pacman..."
-    pacman -Syu --noconfirm yay-bin || { echo "CRITICAL ERROR: Failed to install yay-bin via pacman."; exit 1; }
-    echo "SUCCESS: yay-bin installed via pacman."
+    YAY_CLONE_RETRIES=3
+    YAY_CLONE_SUCCESS=false
 
-    # No need for YAY_INSTALL_STATUS.tmp as pacman handles installation reliably.
+    # CRITICAL FIX: Explicitly create /home/andres/yay-bin with correct ownership as root,
+    # then change ownership to 'andres'. This guarantees write permissions for the user.
+    echo "Ensuring /home/andres/yay-bin directory exists and is owned by 'andres'..."
+    mkdir -p /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to create /home/andres/yay-bin directory as root."; exit 1; }
+    chown andres:andres /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to set ownership of /home/andres/yay-bin."; exit 1; }
+
+    for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
+        echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
+        # CRITICAL FIX: Ensure git clone is run as user 'andres' directly into /home/andres/yay-bin
+        if sudo -u andres git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
+            YAY_CLONE_SUCCESS=true
+            echo "SUCCESS: Cloned yay-bin from AUR."
+            break
+        else
+            echo "Warning: Failed to clone yay-bin. Retrying in 5 seconds..."
+            sleep 5
+        fi
+    done
+
+    if ! \$YAY_CLONE_SUCCESS; then
+        echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts."
+        # Do not exit here; instead, just set the status to FAILED.
+        echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
+    else
+        # Ownership for the cloned directory for user 'andres'
+        chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
+        
+        # CRITICAL FIX: Build and install yay as user 'andres' (not root) using sudo and NOPASSWD: ALL.
+        # This is the correct, secure, and non-interactive way to build yay.
+        echo "Building and installing yay as user 'andres' (non-interactively)..."
+        if sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm"; then
+            echo "SUCCESS: Built and installed yay."
+            echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
+        else
+            echo "CRITICAL ERROR: Failed to build and install yay as user 'andres' inside chroot."
+            echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
+        fi
+    fi
 EOL_AUR_INSTALL
 
 # Step 6-C: Install AUR Packages with Yay
@@ -370,7 +404,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     if [ -f "/usr/bin/yay" ] && [ -x "/usr/bin/yay" ]; then
         echo "Yay is confirmed to be installed. Proceeding with AUR packages."
     else
-        echo "CRITICAL ERROR: Yay is not found or not executable after pacman installation. Skipping AUR package installation."
+        echo "CRITICAL ERROR: Yay is not found or not executable after AUR installation. Skipping AUR package installation."
         exit 1 # Exit this chroot block, as AUR packages are critical for your setup.
     fi
 
@@ -467,6 +501,7 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     echo "Creating one-time systemd service for uwsm@andres.service enablement..."
     mkdir -p /etc/systemd/system/ || { echo "Error: Failed to create /etc/systemd/system directory."; exit 1; }
     # CRITICAL FIX: Get UID for 'andres' dynamically and use it in DBUS_SESSION_BUS_ADDRESS
+    # This ID will be available in the chroot environment.
     ANDRES_UID=$(id -u andres) || { echo "Error: Could not get UID for user 'andres'."; exit 1; }
 
     cat > /etc/systemd/system/enable-uwsm-on-first-boot.service << EOT_UWSM_SERVICE
