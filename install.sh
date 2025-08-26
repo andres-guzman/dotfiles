@@ -398,6 +398,14 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
 
     pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
 
+    # CRITICAL FIX: Add oh-my-zsh-git to the list of AUR packages
+    if ! grep -q "^oh-my-zsh-git$" "\${pkg_aur_path}"; then
+        echo "oh-my-zsh-git" >> "\${pkg_aur_path}"
+        echo "Added oh-my-zsh-git to AUR package list for installation."
+    else
+        echo "oh-my-zsh-git already in AUR package list."
+    fi
+
     if [ ! -f "\${pkg_aur_path}" ]; then
         echo "Error: pkg_aur_path not found at \${pkg_aur_path}. Cannot install AUR packages."
         exit 0 # Exit this chroot block gracefully, no AUR packages to install
@@ -447,16 +455,19 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
 
     # Clone zsh-autosuggestions
     if [ ! -d "/home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ]; then
+        echo "Cloning zsh-autosuggestions..."
         git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Warning: Failed to clone zsh-autosuggestions. Continuing."; }
     else
         echo "zsh-autosuggestions already cloned. Skipping."
     fi
     chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
 
-    # Clone fzf locally as expected by some dotfiles
+    # Clone fzf locally and run install script to generate completion
     if [ ! -d "/home/andres/.fzf" ]; then
+        echo "Cloning fzf locally and installing completion..."
         git clone --depth 1 https://github.com/junegunn/fzf.git /home/andres/.fzf || { echo "Warning: Failed to clone fzf locally. Continuing."; }
-        /home/andres/.fzf/install --all --no-fish --no-zsh --no-bash --no-completion --no-key-bindings --skip-shell || { echo "Warning: Failed to run fzf install script. Continuing."; }
+        # CRITICAL FIX: Run fzf install with --all to generate completion, and pipe 'yes'
+        yes | /home/andres/.fzf/install --all --no-fish --no-bash --no-key-bindings --skip-shell || { echo "Warning: Failed to run fzf install script. Continuing."; }
     else
         echo "fzf already cloned locally. Skipping."
     fi
