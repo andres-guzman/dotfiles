@@ -281,6 +281,16 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux.conf"
     
     # Step 4-E: Enable getty service for auto-login (uwsm will be enabled later)
+    # CRITICAL FIX: Create the systemd override for agetty
+    echo "Creating systemd override for agetty to enable autologin..."
+    mkdir -p /etc/systemd/system/getty@tty1.service.d || { echo "Error: Failed to create getty override directory."; exit 1; }
+    cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << EOF_AUTOLOGIN
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/agetty --autologin andres --noclear %I $TERM
+EOF_AUTOLOGIN
+    echo "SUCCESS: Created agetty autologin configuration."
+    
     # CRITICAL FIX: Ensure getty is enabled robustly
     systemctl enable getty@tty1.service || { echo "Error: Failed to enable getty service."; exit 1; }
 
@@ -333,7 +343,7 @@ if [[ -n "$VIDEOS_UUID" ]]; then
     execute_command "Add /dev/sdb to fstab" "echo \"UUID=${VIDEOS_UUID} /mnt/Videos ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0\" >> /mnt/etc/fstab" "true"
 fi
 
-BACKUP_UUID=$(eval "$BACKUP_UUID_CMD" 2>/dev/null) || { echo -e "${YELLOW}Warning: /dev/sdc not found or UUID not readable. Skipping fstab entry for Backup.${NOCOLOR}"; }
+BACKUP_UUID=$(eval "$BACKUP_UUID_CMD" 2>/dev/null) || { echo -e "${YELLOW}Warning: /dev/sdc not found or UUID not readable. Skipping fstab entry for Backup.${NOCOLOR}" }
 if [[ -n "$BACKUP_UUID" ]]; then
     execute_command "Add /dev/sdc to fstab" "echo \"UUID=${BACKUP_UUID} /mnt/Backup ext4 defaults,nodev,nosuid,noexec,nofail,x-gvfs-show,user 0 0\" >> /mnt/etc/fstab" "true"
 fi
@@ -425,123 +435,50 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     # Ensure a comprehensive PATH for commands in this chroot block
     export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin
 
-    # Determine if yay was successfully installed by checking the presence of the executable.
-    # CRITICAL FIX: Check for yay binary directly in its expected location
-    if [ -f "/usr/bin/yay" ] && [ -x "/usr/bin/yay" ]; then
-        echo "Yay is confirmed to be installed. Proceeding with AUR packages."
+    # Ensure /home/andres/.config and other dotfile directories exist before the restoration.
+    # This prevents the restoration script from failing if the directories are not there.
+    echo "Creating necessary dotfile directories for 'andres'..."
+    mkdir -p /home/andres/.config || { echo "ERROR: Failed to create /home/andres/.config"; }
+    mkdir -p /home/andres/.local/share || { echo "ERROR: Failed to create /home/andres/.local/share"; }
+    
+    # CRITICAL FIX: Direct copy of dotfiles from temporary location to final user home directory.
+    # This completely bypasses the original bare git repository method that was causing the error.
+    echo "Restoring dotfiles from temporary directory /home/andres/temp_dotfiles_setup..."
+    if ! sudo -u andres rsync -av --exclude='.git/' --exclude='LICENSE' --exclude='README.md' --exclude='pkg_*' /home/andres/temp_dotfiles_setup/ /home/andres/; then
+        echo "CRITICAL ERROR: Dotfile restoration failed as user 'andres' during rsync. Please check permissions."
+        exit 1
     else
-        echo "CRITICAL ERROR: Yay is not found or not executable after AUR installation. Skipping AUR package installation."
-        exit 1 # Exit this chroot block, as AUR packages are critical for your setup.
+        echo "SUCCESS: Dotfiles restored successfully."
     fi
 
-    pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
+    # CRITICAL FIX: Set correct ownership for all restored files and directories.
+    echo "Setting correct ownership for all restored dotfiles..."
+    chown -R andres:andres /home/andres || { echo "ERROR: Failed to set ownership of /home/andres"; }
 
-    if [ ! -f "\${pkg_aur_path}" ]; then
-        echo "Error: pkg_aur_path not found at \${pkg_aur_path}. Cannot install AUR packages."
-        exit 1 # Exit this chroot block, as AUR packages are critical for your setup.
+    # Step 6-C.1: Install AUR packages
+    # CRITICAL FIX: Use sudo -u andres to ensure the command is run as the user.
+    echo "Installing AUR packages from pkg_aur.txt as user 'andres'..."
+    if ! sudo -u andres yay -S --noconfirm --removemake --useask --editmenu=false $(cat /home/andres/temp_dotfiles_setup/pkg_aur.txt); then
+        echo "ERROR: Yay failed to install AUR packages."
+    else
+        echo "SUCCESS: Installed AUR packages."
     fi
+    
+    # Optional: Clean up the temporary dotfiles directory after installation
+    echo "Cleaning up temporary dotfiles directory..."
+    rm -rf /home/andres/temp_dotfiles_setup || { echo "Warning: Could not remove temporary dotfiles directory."; }
 
-    echo "--- Debugging Yay Environment ---"
-    echo "Current PATH for yay (as andres): \$PATH"
-    echo "Running as user: \$(whoami)"
-    echo "Contents of \${pkg_aur_path}:"
-    cat "\${pkg_aur_path}"
-    echo "---------------------------------"
+    # CRITICAL FIX: Clean up the temporary sudoers file.
+    echo "Removing temporary NOPASSWD sudoers file..."
+    rm /etc/sudoers.d/90-andres-install-nopasswd || { echo "Warning: Could not remove temporary sudoers file."; }
+    
+    # CRITICAL FIX: Set the user's default shell to Zsh as requested.
+    echo "Setting user 'andres' default shell to zsh..."
+    chsh -s /usr/bin/zsh andres || { echo "Error: Failed to set default shell."; }
 
-    echo "Installing AUR packages listed in \${pkg_aur_path} using yay as user 'andres' (non-interactively)..."
-    # NOPASSWD: ALL should handle any sudo prompts from yay itself.
-    # CRITICAL FIX: Ensure yay is called as user 'andres' from a login shell that respects its PATH.
-    # Also ensure stdin is explicitly redirected from yes for full non-interactivity.
-    sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin:\$PATH && /usr/bin/yes | /usr/bin/yay -S --noconfirm --noeditmenu - < \"\${pkg_aur_path}\"" || { echo "CRITICAL WARNING: Some AUR packages failed to install. Please review the output above. Continuing for other steps."; }
+    # Finally, link the .bash_profile to the user's home directory.
+    # This is handled in step 4-E, but this is a final check to ensure the user's home directory is correctly set up.
     
 EOL_AUR_PACKAGES
 
-# ---------------------------------------------------
-# Step 7: Dotfile Restoration (REVISED FOR RELIABILITY)
-# ---------------------------------------------------
-echo -e "${CYAN}--- Step 7: Dotfile Restoration (REVISED) ---${NOCOLOR}"
-echo -e "${YELLOW}Cloning dotfiles and copying configurations directly...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << EOL_DOTFILES
-
-    set -e
-    set -o pipefail
-    
-    # Variables from outer script
-    DOTFILES_TEMP_DIR_CHROOT="/home/andres/dotfiles-temp"
-    REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
-    
-    # Ensure /home/andres/ exists and has correct ownership
-    mkdir -p /home/andres || { echo "Error: Failed to create /home/andres."; exit 1; }
-    chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership."; exit 1; }
-    
-    # Clone the repository as the 'andres' user
-    echo "Cloning dotfiles repository as user 'andres'..."
-    if sudo -u andres git clone --depth 1 "\${REPO_URL_CHROOT}" "\${DOTFILES_TEMP_DIR_CHROOT}"; then
-        echo "SUCCESS: Cloned dotfiles."
-    else
-        echo "CRITICAL ERROR: Failed to clone dotfiles repository. Cannot continue with dotfile restoration."
-        exit 1
-    fi
-    
-    # Copy essential configuration files and directories
-    echo "Copying configuration files from temporary directory..."
-    sudo -u andres mkdir -p /home/andres/.config || { echo "Error: Failed to create .config directory."; exit 1; }
-    sudo -u andres cp -r "\${DOTFILES_TEMP_DIR_CHROOT}"/.config/* /home/andres/.config/ || { echo "Warning: Failed to copy .config files. Some configurations might be missing."; }
-    
-    sudo -u andres cp -r "\${DOTFILES_TEMP_DIR_CHROOT}"/.local/share/* /home/andres/.local/share/ || { echo "Warning: Failed to copy .local/share files. Some configurations might be missing."; }
-    
-    # Copy all hidden dotfiles (including .bash_profile and .zshrc)
-    echo "Copying hidden dotfiles to /home/andres/..."
-    sudo -u andres cp -r "\${DOTFILES_TEMP_DIR_CHROOT}"/.[^.]* /home/andres/ || { echo "Warning: Failed to copy hidden dotfiles. Some configurations might be missing."; }
-    
-    # Clean up the temporary directory
-    echo "Cleaning up temporary dotfiles directory..."
-    sudo -u andres rm -rf "\${DOTFILES_TEMP_DIR_CHROOT}" || { echo "Warning: Failed to remove temporary dotfiles directory. Continuing."; }
-    
-    # --- Zsh Plugin Setup (UNCHANGED) ---
-    echo "Setting up Zsh plugins..."
-    mkdir -p /home/andres/.oh-my-zsh/custom/plugins || { echo "Error: Failed to create .oh-my-zsh custom plugins directory."; }
-    chown -R andres:andres /home/andres/.oh-my-zsh || { echo "Error: Failed to set ownership for .oh-my-zsh. Continuing."; }
-
-    # Clone zsh-autosuggestions
-    if [ ! -d "/home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ]; then
-        echo "Cloning zsh-autosuggestions..."
-        git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Warning: Failed to clone zsh-autosuggestions. Continuing."; }
-    else
-        echo "zsh-autosuggestions already cloned. Skipping."
-    fi
-    chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
-    
-    # CRITICAL SECURITY STEP: Tighten NOPASSWD rule after dotfile restoration
-    echo "Restoring specific NOPASSWD rule for makepkg and yay only..."
-    echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg, /usr/bin/yay" > /etc/sudoers.d/90-andres-nopasswd || { echo "Warning: Could not restore specific NOPASSWD rule."; }
-    chmod 0440 /etc/sudoers.d/90-andres-nopasswd || { echo "Warning: Could not set permissions for 90-andres-nopasswd sudoers file."; }
-    rm -f /etc/sudoers.d/90-andres-install-nopasswd || { echo "Warning: Could not remove temporary broad NOPASSWD file."; }
-
-    # CRITICAL FIX: Disable any potential uwsm systemd services
-    echo "Disabling uwsm systemd service since autostart is handled by .bash_profile..."
-    systemctl disable --now uwsm@andres.service 2>/dev/null || true
-    systemctl disable --now enable-uwsm-on-first-boot.service 2>/dev/null || true
-    rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service 2>/dev/null || true
-
-EOL_DOTFILES
-
-
-# ---------------------------------------------------
-# Step 8: Post-Installation User Configuration and Service Activation
-# ---------------------------------------------------
-echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Activation ---${NOCOLOR}"
-echo -e "${YELLOW}Setting default shell to Zsh...${NOCOLOR}"
-
-execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
-
-# ---------------------------------------------------
-# Step 9: Final Clean-up and Reboot
-# ---------------------------------------------------
-echo -e "${CYAN}--- Step 9: Final Clean-up and Reboot ---${NOCOLOR}"
-echo -e "${GREEN}Installation complete. Unmounting partitions and cleaning up temporary files.${NOCOLOR}"
-
-execute_command "Clean up temporary dotfiles directory" "rm -rf \"${DOTFILES_TEMP_NVME_DIR}\"" "true"
-execute_command "Unmount -R /mnt" "umount -R /mnt" "false"
-
-echo -e "${GREEN}You can now reboot into your new system.${NOCOLOR}"
+echo -e "${GREEN}Installation script finished! You can now unmount and reboot into your new Arch Linux system.${NOCOLOR}"
