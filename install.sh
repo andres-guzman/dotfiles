@@ -343,8 +343,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     set -e
     set -o pipefail
 
-    # Ensure a basic PATH is set for bash
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    # Ensure a comprehensive PATH for commands in this chroot block
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin
 
     YAY_CLONE_RETRIES=3
     YAY_CLONE_SUCCESS=false
@@ -369,22 +369,20 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     done
 
     if ! \$YAY_CLONE_SUCCESS; then
-        echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts."
-        # Do not exit here; instead, just set the status to FAILED.
-        echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
+        echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts. Exiting AUR install block."
+        exit 1 # Critical failure, exit this chroot block
     else
         # Ownership for the cloned directory for user 'andres'
         chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
         
         # CRITICAL FIX: Build and install yay as user 'andres' (not root) using sudo and NOPASSWD: ALL.
-        # This is the correct, secure, and non-interactive way to build yay.
+        # Ensure a robust PATH for makepkg within this subshell.
         echo "Building and installing yay as user 'andres' (non-interactively)..."
-        if sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm"; then
+        if sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$PATH && cd /home/andres/yay-bin && makepkg -si --noconfirm"; then
             echo "SUCCESS: Built and installed yay."
-            echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
         else
-            echo "CRITICAL ERROR: Failed to build and install yay as user 'andres' inside chroot."
-            echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
+            echo "CRITICAL ERROR: Failed to build and install yay as user 'andres' inside chroot. Exiting AUR install block."
+            exit 1 # Critical failure, exit this chroot block
         fi
     fi
 EOL_AUR_INSTALL
@@ -396,8 +394,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
-    # Ensure a basic PATH is set for bash
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    # Ensure a comprehensive PATH for commands in this chroot block
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin
 
     # Determine if yay was successfully installed by checking the presence of the executable.
     # CRITICAL FIX: Check for yay binary directly in its expected location
@@ -415,11 +413,18 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
         exit 1 # Exit this chroot block, as AUR packages are critical for your setup.
     fi
 
+    echo "--- Debugging Yay Environment ---"
+    echo "Current PATH for yay (as andres): \$PATH"
+    echo "Running as user: \$(whoami)"
+    echo "Contents of \${pkg_aur_path}:"
+    cat "\${pkg_aur_path}"
+    echo "---------------------------------"
+
     echo "Installing AUR packages listed in \${pkg_aur_path} using yay as user 'andres' (non-interactively)..."
     # NOPASSWD: ALL should handle any sudo prompts from yay itself.
-    # CRITICAL FIX: Ensure yay is called as user 'andres' from a shell that respects its PATH.
-    # Use 'bash -l -c' to ensure a login shell is used, which helps with PATH and environment setup.
-    sudo -u andres bash -l -c "yes | yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above. Continuing."; }
+    # CRITICAL FIX: Ensure yay is called as user 'andres' from a login shell that respects its PATH.
+    # Also ensure stdin is explicitly redirected from yes for full non-interactivity.
+    sudo -u andres bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$PATH && /usr/bin/yes | /usr/bin/yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "CRITICAL WARNING: Some AUR packages failed to install. Please review the output above. Continuing for other steps."; }
     
 EOL_AUR_PACKAGES
 
@@ -434,8 +439,8 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     set -e
     set -o pipefail
 
-    # Ensure a basic PATH is set for bash
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    # Ensure a comprehensive PATH is set for commands in this chroot block
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin
 
     # FIX: Add defaultBranch configuration to prevent warnings
     git config --global init.defaultBranch main || { echo "Warning: Failed to set git default branch globally. Continuing."; }
@@ -512,9 +517,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# CRITICAL FIX: Use the dynamically obtained UID for D-Bus path.
+# CRITICAL FIX: Use the dynamically obtained UID for D-Bus path and ensure robust PATH.
 # Use 'bash -l -c' to ensure a login shell environment for systemctl --user.
-ExecStart=/bin/bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$PATH && export XDG_RUNTIME_DIR=/run/user/${ANDRES_UID} && DBUS_SESSION_BUS_ADDRESS=unix:path=\${XDG_RUNTIME_DIR}/bus systemctl --user enable --now uwsm@andres.service"
+ExecStart=/bin/bash -l -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin:\$PATH && export XDG_RUNTIME_DIR=/run/user/${ANDRES_UID} && DBUS_SESSION_BUS_ADDRESS=unix:path=\${XDG_RUNTIME_DIR}/bus systemctl --user enable --now uwsm@andres.service"
 ExecStartPost=/bin/bash -c "/usr/bin/rm -f /etc/systemd/system/enable-uwsm-on-first-boot.service"
 User=andres
 Environment="HOME=/home/andres"
