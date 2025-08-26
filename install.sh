@@ -366,19 +366,23 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
 
     if ! \$YAY_CLONE_SUCCESS; then
         echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts. AUR packages will not be installed."
+        # Do not exit here; instead, just set the status to FAILED.
         echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
-        exit 0 # Exit this chroot block gracefully.
+    else
+        # Ownership for the cloned directory for user 'andres'
+        chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
+        
+        # CRITICAL FIX: Build and install yay as user 'andres' (not root) using sudo and NOPASSWD: ALL.
+        # This is the correct, secure, and non-interactive way to build yay.
+        echo "Building and installing yay as user 'andres' (non-interactively)..."
+        if sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm"; then
+            echo "SUCCESS: Built and installed yay."
+            echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
+        else
+            echo "CRITICAL ERROR: Failed to build and install yay as user 'andres' inside chroot."
+            echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
+        fi
     fi
-
-    # Ownership for the cloned directory for user 'andres'
-    chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
-    
-    # CRITICAL FIX: Build and install yay as user 'andres' (not root) using sudo and NOPASSWD: ALL.
-    # This is the correct, secure, and non-interactive way to build yay.
-    echo "Building and installing yay as user 'andres' (non-interactively)..."
-    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "CRITICAL ERROR: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
-
-    echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
 
 # Step 6-C: Install AUR Packages with Yay
@@ -389,22 +393,17 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     set -e
     set -o pipefail
 
-    if [ -f "/tmp/yay_install_status.tmp" ] && [ "\$(cat /tmp/yay_install_status.tmp)" = "SUCCESS" ]; then
-        echo "Yay was successfully installed. Proceeding with AUR packages."
+    # Determine if yay was successfully installed by checking the presence of the executable.
+    YAY_INSTALLED=false
+    if sudo -u andres bash -c "command -v yay"; then
+        YAY_INSTALLED=true
+        echo "Yay is confirmed to be installed. Proceeding with AUR packages."
     else
-        echo "Warning: Yay was not successfully installed. Skipping AUR package installation."
+        echo "Warning: Yay is not found or not executable for user 'andres'. Skipping AUR package installation."
         exit 0 # Exit this chroot block gracefully.
     fi
 
     pkg_aur_path="/home/andres/temp_dotfiles_setup/pkg_aur.txt"
-
-    # CRITICAL FIX: Add oh-my-zsh-git to the list of AUR packages
-    if ! grep -q "^oh-my-zsh-git$" "\${pkg_aur_path}"; then
-        echo "oh-my-zsh-git" >> "\${pkg_aur_path}"
-        echo "Added oh-my-zsh-git to AUR package list for installation."
-    else
-        echo "oh-my-zsh-git already in AUR package list."
-    fi
 
     if [ ! -f "\${pkg_aur_path}" ]; then
         echo "Error: pkg_aur_path not found at \${pkg_aur_path}. Cannot install AUR packages."
