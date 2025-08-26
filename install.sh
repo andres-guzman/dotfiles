@@ -337,7 +337,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
         # CRITICAL FIX: Ensure git clone is run as user 'andres' and handles potential network issues
-        sudo -u andres git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
+        # The 'then' was missing here in the previous version, causing a syntax error.
+        if sudo -u andres git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
             YAY_CLONE_SUCCESS=true
             echo "SUCCESS: Cloned yay-bin from AUR."
             break
