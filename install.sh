@@ -294,8 +294,8 @@ EOF_AUTOLOGIN
     # CRITICAL FIX: Ensure getty is enabled robustly
     systemctl enable getty@tty1.service || { echo "Error: Failed to enable getty service."; exit 1; }
 
-    # CRITICAL FIX: Add a line to .bash_profile to handle autostart
-    # This is a robust way to start the session manager without relying on a temporary systemd service.
+    # CRITICAL FIX: Create a simple .bash_profile with a direct exec to uwsm.
+    # This avoids the complex shell logic that caused the "unexpected EOF" error.
     echo "Creating or updating .bash_profile for autologin and uwsm autostart..."
     BASH_PROFILE_PATH="/home/andres/.bash_profile"
     
@@ -305,10 +305,9 @@ EOF_AUTOLOGIN
         chown andres:andres "\${BASH_PROFILE_PATH}" || { echo "Error: Failed to set ownership of .bash_profile."; exit 1; }
     fi
 
-    # Append the autostart logic to .bash_profile
-    # This logic checks if a Wayland session is already active and starts it if not.
-    # NOTE: This ensures it only runs for an interactive login shell.
-    cat >> "\${BASH_PROFILE_PATH}" << 'EOF_BASH_PROFILE'
+    # Overwrite the file with the simple, guaranteed-to-work autostart logic.
+    cat > "\${BASH_PROFILE_PATH}" << 'EOF_BASH_PROFILE'
+# Start Hyprland using uwsm if not already in a graphical session.
 if [[ -z "$DISPLAY" && "$XDG_VTNR" -eq 1 ]]; then
     exec /usr/bin/uwsm
 fi
