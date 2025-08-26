@@ -270,13 +270,13 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
 
     echo "title    Arch Linux Zen" > "/boot/loader/entries/${TODAY}_linux-zen.conf" || { echo "Error: Failed to create linux-zen boot entry."; exit 1; }
     echo "linux    /vmlinuz-linux-zen" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-ucode.img" 
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
     echo "initrd   /initramfs-linux-zen.img" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
     echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux-zen.conf"
 
     echo "title    Arch Linux" > "/boot/loader/entries/${TODAY}_linux.conf" || { echo "Error: Failed to create linux boot entry."; exit 1; }
     echo "linux    /vmlinuz-linux" >> "/boot/loader/entries/${TODAY}_linux.conf"
-    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux-ucode.img" 
+    echo "initrd   /intel-ucode.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
     echo "initrd   /initramfs-linux.img" >> "/boot/loader/entries/${TODAY}_linux.conf"
     echo "options  root=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" >> "/boot/loader/entries/${TODAY}_linux.conf"
     
@@ -475,9 +475,6 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     # CRITICAL FIX: Set the user's default shell to Zsh as requested.
     echo "Setting user 'andres' default shell to zsh..."
     chsh -s /usr/bin/zsh andres || { echo "Error: Failed to set default shell."; }
-
-    # Finally, link the .bash_profile to the user's home directory.
-    # This is handled in step 4-E, but this is a final check to ensure the user's home directory is correctly set up.
     
 EOL_AUR_PACKAGES
 
