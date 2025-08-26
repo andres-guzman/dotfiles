@@ -342,6 +342,9 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     set -e
     set -o pipefail
 
+    # Ensure a basic PATH is set for bash
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
     YAY_CLONE_RETRIES=3
     YAY_CLONE_SUCCESS=false
 
@@ -365,7 +368,7 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     done
 
     if ! \$YAY_CLONE_SUCCESS; then
-        echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts. AUR packages will not be installed."
+        echo "CRITICAL ERROR: Failed to clone yay-bin after multiple attempts."
         # Do not exit here; instead, just set the status to FAILED.
         echo "YAY_INSTALL_STATUS=FAILED" > /tmp/yay_install_status.tmp
     else
@@ -392,14 +395,17 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
     # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
+    # Ensure a basic PATH is set for bash
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # Determine if yay was successfully installed by checking the presence of the executable.
     YAY_INSTALLED=false
-    if sudo -u andres bash -c "command -v yay"; then
+    # CRITICAL FIX: Check for yay binary directly in its expected location
+    if [ -f "/usr/bin/yay" ] && [ -x "/usr/bin/yay" ]; then
         YAY_INSTALLED=true
         echo "Yay is confirmed to be installed. Proceeding with AUR packages."
     else
-        echo "Warning: Yay is not found or not executable for user 'andres'. Skipping AUR package installation."
+        echo "Warning: Yay is not found or not executable. Skipping AUR package installation."
         exit 0 # Exit this chroot block gracefully.
     fi
 
@@ -412,7 +418,8 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
 
     echo "Installing AUR packages listed in \${pkg_aur_path} using yay as user 'andres' (non-interactively)..."
     # NOPASSWD: ALL should handle any sudo prompts from yay itself.
-    yes | sudo -u andres bash -c "yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
+    # CRITICAL FIX: Ensure yay is called as user 'andres' from a shell that respects its PATH.
+    sudo -u andres bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$PATH && yes | yay -S --noconfirm - < \"\${pkg_aur_path}\"" || { echo "Warning: Some AUR packages failed to install. Please review the output above."; }
     
     rm -f /tmp/yay_install_status.tmp # Clean up the status file after use
 EOL_AUR_PACKAGES
@@ -427,6 +434,9 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
+
+    # Ensure a basic PATH is set for bash
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # FIX: Add defaultBranch configuration to prevent warnings
     git config --global init.defaultBranch main || { echo "Warning: Failed to set git default branch globally. Continuing."; }
@@ -461,7 +471,6 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
 
     # fzf is now installed via AUR, so no local cloning/install script needed here.
-    # CRITICAL FIX: Removed the entire local fzf installation block.
     echo "fzf is handled by AUR installation. Skipping local fzf setup."
 
     # Move fonts, themes, systemd user services (ownership should be correct now)
