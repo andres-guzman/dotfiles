@@ -344,12 +344,13 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
         exit 0 # Exit this chroot block gracefully.
     fi
 
-    # Ownership and makepkg commands remain. These are critical if yay was cloned.
+    # Ownership for the cloned directory for user 'andres'
     chown -R andres:andres /home/andres/yay-bin || { echo "Error: Failed to change ownership of yay-bin inside chroot."; exit 1; }
     
-    # Building and installing yay as user 'andres' (NOPASSWD: ALL should handle this)
-    echo "Building and installing yay as user 'andres'..."
-    sudo -u andres bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "Error: Failed to build and install yay as user 'andres' inside chroot."; exit 1; }
+    # CRITICAL FIX: Build and install yay as root to bypass any sudo prompts during its build process.
+    # This ensures yay is installed globally and non-interactively.
+    echo "Building and installing yay as root (non-interactively)..."
+    bash -c "cd /home/andres/yay-bin && makepkg -si --noconfirm" || { echo "CRITICAL ERROR: Failed to build and install yay as root inside chroot."; exit 1; }
 
     echo "YAY_INSTALL_STATUS=SUCCESS" > /tmp/yay_install_status.tmp
 EOL_AUR_INSTALL
