@@ -334,14 +334,15 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     YAY_CLONE_RETRIES=3
     YAY_CLONE_SUCCESS=false
 
-    # CRITICAL FIX: Explicitly create the parent directory for yay-bin and set ownership
-    echo "Ensuring /home/andres/.homes/andres directory exists and is owned by 'andres'..."
-    sudo -u andres mkdir -p /home/andres/.homes/andres || { echo "CRITICAL ERROR: Failed to create /home/andres/.homes/andres directory."; exit 1; }
-    
+    # CRITICAL FIX: Explicitly create /home/andres/yay-bin with correct ownership as root,
+    # then change ownership to 'andres'. This guarantees write permissions for the user.
+    echo "Ensuring /home/andres/yay-bin directory exists and is owned by 'andres'..."
+    mkdir -p /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to create /home/andres/yay-bin directory as root."; exit 1; }
+    chown andres:andres /home/andres/yay-bin || { echo "CRITICAL ERROR: Failed to set ownership of /home/andres/yay-bin."; exit 1; }
+
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
-        # CRITICAL FIX: Ensure git clone is run as user 'andres' and handles potential network issues
-        # The 'then' was missing here in the previous version, causing a syntax error.
+        # CRITICAL FIX: Ensure git clone is run as user 'andres' directly into /home/andres/yay-bin
         if sudo -u andres git clone --depth 1 --config http.postBuffer=104857600 --config http.lowSpeedLimit=0 --config http.lowSpeedTime=20 https://aur.archlinux.org/yay-bin.git /home/andres/yay-bin; then
             YAY_CLONE_SUCCESS=true
             echo "SUCCESS: Cloned yay-bin from AUR."
