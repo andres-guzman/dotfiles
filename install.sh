@@ -13,8 +13,8 @@ NOCOLOR='\033[0m'
 
 # Define the repository URL for cloning the bare repo later
 REPO_URL="https://github.com/andres-guzman/dotfiles.git"
-# This will be the location of the *bare* dotfiles repo in the new system's /home/andres/
-DOTFILES_BARE_DIR="/home/andres/dotfiles"
+# This will be the location of the temporary dotfiles repo in the new system's /home/andres/
+DOTFILES_TEMP_DIR="/home/andres/dotfiles-temp"
 
 # Define GitHub raw URLs for package lists (assuming they are in the root of your public repo)
 PKG_OFFICIAL_URL="https://raw.githubusercontent.com/andres-guzman/dotfiles/main/pkg_official.txt"
@@ -261,7 +261,7 @@ arch-chroot /mnt /bin/bash << 'EOF_CHROOT_SCRIPT'
     echo "Configuring systemd-boot..."
     bootctl install || { echo "Error: Failed to install systemd-boot."; exit 1; }
 
-    TODAY=$(date +%Y-%m-%d)
+    TODAY=$(date +%Y-%m-%d")
 
     echo "default ${TODAY}_linux-zen.conf" > /boot/loader/loader.conf || { echo "Error: Failed to create loader.conf."; exit 1; }
     echo "timeout  0" >> /boot/loader/loader.conf
@@ -457,50 +457,49 @@ arch-chroot /mnt /bin/bash << EOL_AUR_PACKAGES
 EOL_AUR_PACKAGES
 
 # ---------------------------------------------------
-# Step 7: Dotfile Restoration
+# Step 7: Dotfile Restoration (REVISED FOR RELIABILITY)
 # ---------------------------------------------------
-echo -e "${CYAN}--- Step 7: Dotfile Restoration ---${NOCOLOR}"
-echo -e "${YELLOW}Setting up bare dotfiles repository and restoring configurations to /home/andres/...${NOCOLOR}"
+echo -e "${CYAN}--- Step 7: Dotfile Restoration (REVISED) ---${NOCOLOR}"
+echo -e "${YELLOW}Cloning dotfiles and copying configurations directly...${NOCOLOR}"
 arch-chroot /mnt /bin/bash << EOL_DOTFILES
 
-    # Enable strict mode for error handling within this chroot block
     set -e
     set -o pipefail
-
-    # Ensure a comprehensive PATH is set for commands in this chroot block
-    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/andres/.local/bin
-
-    # FIX: Add defaultBranch configuration to prevent warnings
-    git config --global init.defaultBranch main || { echo "Warning: Failed to set git default branch globally. Continuing."; }
-
-    # Variables from outer script need to be explicitly passed or reconstructed.
-    DOTFILES_BARE_DIR_CHROOT="/home/andres/dotfiles"
+    
+    # Variables from outer script
+    DOTFILES_TEMP_DIR_CHROOT="/home/andres/dotfiles-temp"
     REPO_URL_CHROOT="https://github.com/andres-guzman/dotfiles.git"
-
-    # CRITICAL FIX: Ensure the dotfiles directory is created with correct permissions *before* cloning.
-    echo "Ensuring /home/andres directory exists and has correct ownership before dotfile restoration..."
-    mkdir -p /home/andres || { echo "Error: Failed to create /home/andres directory."; exit 1; }
-    chown andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
     
-    # CRITICAL FIX: Run all git commands as user 'andres' using sudo.
-    echo "Running dotfile git setup as user 'andres'..."
-    sudo -u andres bash -l -c "
-        set -e
-        set -o pipefail
-        
-        # Set git config for user 'andres'
-        git config --global init.defaultBranch main || { echo 'Warning: Failed to set git default branch.'; }
-
-        git init --bare \"\${DOTFILES_BARE_DIR_CHROOT}\" || { echo 'Error: Failed to initialize bare dotfiles repository.'; exit 1; }
-        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres config --local status.showUntrackedFiles no || { echo 'Error: Failed to configure git for dotfiles.'; exit 1; }
-        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres remote add origin \"\${REPO_URL_CHROOT}\" || { echo 'Error: Failed to add origin remote.'; exit 1; }
-        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres fetch origin main || { echo 'Error: Failed to fetch from origin remote.'; exit 1; }
-        git --git-dir=\"\${DOTFILES_BARE_DIR_CHROOT}\" --work-tree=/home/andres checkout --force main || { echo 'Error: Failed to checkout main branch.'; exit 1; }
-    " || { echo "CRITICAL ERROR: Dotfile restoration failed as user 'andres'."; exit 1; }
+    # Ensure /home/andres/ exists and has correct ownership
+    mkdir -p /home/andres || { echo "Error: Failed to create /home/andres."; exit 1; }
+    chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership."; exit 1; }
     
-    # --- Zsh Plugin Setup ---
+    # Clone the repository as the 'andres' user
+    echo "Cloning dotfiles repository as user 'andres'..."
+    if sudo -u andres git clone --depth 1 "\${REPO_URL_CHROOT}" "\${DOTFILES_TEMP_DIR_CHROOT}"; then
+        echo "SUCCESS: Cloned dotfiles."
+    else
+        echo "CRITICAL ERROR: Failed to clone dotfiles repository. Cannot continue with dotfile restoration."
+        exit 1
+    fi
+    
+    # Copy essential configuration files and directories
+    echo "Copying configuration files from temporary directory..."
+    sudo -u andres mkdir -p /home/andres/.config || { echo "Error: Failed to create .config directory."; exit 1; }
+    sudo -u andres cp -r "\${DOTFILES_TEMP_DIR_CHROOT}"/.config/* /home/andres/.config/ || { echo "Warning: Failed to copy .config files. Some configurations might be missing."; }
+    
+    sudo -u andres cp -r "\${DOTFILES_TEMP_DIR_CHROOT}"/.local/share/* /home/andres/.local/share/ || { echo "Warning: Failed to copy .local/share files. Some configurations might be missing."; }
+    
+    # Copy all hidden dotfiles (including .bash_profile and .zshrc)
+    echo "Copying hidden dotfiles to /home/andres/..."
+    sudo -u andres cp -r "\${DOTFILES_TEMP_DIR_CHROOT}"/.[^.]* /home/andres/ || { echo "Warning: Failed to copy hidden dotfiles. Some configurations might be missing."; }
+    
+    # Clean up the temporary directory
+    echo "Cleaning up temporary dotfiles directory..."
+    sudo -u andres rm -rf "\${DOTFILES_TEMP_DIR_CHROOT}" || { echo "Warning: Failed to remove temporary dotfiles directory. Continuing."; }
+    
+    # --- Zsh Plugin Setup (UNCHANGED) ---
     echo "Setting up Zsh plugins..."
-    # Ensure .oh-my-zsh base directory exists and is owned by andres
     mkdir -p /home/andres/.oh-my-zsh/custom/plugins || { echo "Error: Failed to create .oh-my-zsh custom plugins directory."; }
     chown -R andres:andres /home/andres/.oh-my-zsh || { echo "Error: Failed to set ownership for .oh-my-zsh. Continuing."; }
 
@@ -512,28 +511,7 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
         echo "zsh-autosuggestions already cloned. Skipping."
     fi
     chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
-
-    # fzf is now installed via AUR, so no local cloning/install script needed here.
-    echo "fzf is handled by AUR installation. Skipping local fzf setup."
-
-    # Move fonts, themes, systemd user services (ownership should be correct now)
-    echo "Adjusting dotfile locations if necessary..."
-    if [ -d "/home/andres/fonts" ]; then
-        mkdir -p /home/andres/.local/share/fonts || { echo "Error: Failed to create fonts directory."; }
-        mv /home/andres/fonts/* /home/andres/.local/share/fonts/ 2>/dev/null || { echo "Warning: Failed to move fonts. Continuing."; }
-        rmdir /home/andres/fonts 2>/dev/null || true # Ignore error if dir not empty
-    fi
-    if [ -d "/home/andres/themes" ]; then
-        mkdir -p /home/andres/.local/share/themes || { echo "Error: Failed to create themes directory."; }
-        mv /home/andres/themes/* /home/andres/.local/share/themes/ 2>/dev/null || { echo "Warning: Failed to move themes. Continuing."; }
-        rmdir /home/andres/themes 2>/dev/null || true
-    fi
-    if [ -d "/home/andres/systemd" ]; then
-        mkdir -p /home/andres/.config/systemd/user || { echo "Error: Failed to create systemd user services directory."; }
-        mv /home/andres/systemd/* /home/andres/.config/systemd/user/ 2>/dev/null || { echo "Warning: Failed to move systemd user services. Continuing."; }
-        rmdir /home/andres/systemd 2>/dev/null || true
-    fi
-
+    
     # CRITICAL SECURITY STEP: Tighten NOPASSWD rule after dotfile restoration
     echo "Restoring specific NOPASSWD rule for makepkg and yay only..."
     echo "%wheel ALL=(ALL:ALL) NOPASSWD: /usr/bin/makepkg, /usr/bin/yay" > /etc/sudoers.d/90-andres-nopasswd || { echo "Warning: Could not restore specific NOPASSWD rule."; }
