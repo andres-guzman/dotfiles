@@ -58,7 +58,7 @@ handle_failure() {
                     return 1 # Indicate skip
                 else
                     echo -e "${RED}Invalid choice. This critical step cannot be skipped.${NOCOLOR}"
-                }
+                fi # CRITICAL FIX: Added missing 'fi' here
                 ;;
             q|Q)
                 echo -e "${RED}Quitting installation as requested.${NOCOLOR}"
