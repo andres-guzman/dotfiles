@@ -334,6 +334,10 @@ arch-chroot /mnt /bin/bash << EOL_AUR_INSTALL
     YAY_CLONE_RETRIES=3
     YAY_CLONE_SUCCESS=false
 
+    # CRITICAL FIX: Explicitly create the parent directory for yay-bin and set ownership
+    echo "Ensuring /home/andres/.homes/andres directory exists and is owned by 'andres'..."
+    sudo -u andres mkdir -p /home/andres/.homes/andres || { echo "CRITICAL ERROR: Failed to create /home/andres/.homes/andres directory."; exit 1; }
+    
     for i in \$(seq 1 \$YAY_CLONE_RETRIES); do
         echo "Attempt \$i of \$YAY_CLONE_RETRIES to clone yay-bin..."
         # CRITICAL FIX: Ensure git clone is run as user 'andres' and handles potential network issues
