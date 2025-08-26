@@ -204,11 +204,13 @@ execute_chroot_command "Synchronize package databases" "pacman -Syyu --noconfirm
 echo "Configuring systemd-boot..."
 execute_chroot_command "Install systemd-boot" "bootctl install"
 
-TODAY=$(date +%Y-%m-%d")
+TODAY=$(date +%Y-%m-%d)
 
+# CRITICAL FIX: The blkid command was causing a syntax error.
+# We will use single quotes to prevent the outer shell from evaluating it.
 execute_chroot_command "Create loader.conf" "echo -e \"default ${TODAY}_linux-zen.conf\ntimeout  0\nconsole-mode max\neditor   no\" > /boot/loader/loader.conf"
-execute_chroot_command "Create linux-zen boot entry" "echo -e \"title\tArch Linux Zen\nlinux\t/vmlinuz-linux-zen\ninitrd\t/intel-ucode.img\ninitrd\t/initramfs-linux-zen.img\noptions\troot=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off\" > \"/boot/loader/entries/${TODAY}_linux-zen.conf\""
-execute_chroot_command "Create linux boot entry" "echo -e \"title\tArch Linux\nlinux\t/vmlinuz-linux\ninitrd\t/intel-ucode.img\ninitrd\t/initramfs-linux.img\noptions\troot=UUID=\$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off\" > \"/boot/loader/entries/${TODAY}_linux.conf\""
+execute_chroot_command "Create linux-zen boot entry" 'echo -e "title\tArch Linux Zen\nlinux\t/vmlinuz-linux-zen\ninitrd\t/intel-ucode.img\ninitrd\t/initramfs-linux-zen.img\noptions\troot=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" > "/boot/loader/entries/${TODAY}_linux-zen.conf"'
+execute_chroot_command "Create linux boot entry" 'echo -e "title\tArch Linux\nlinux\t/vmlinuz-linux\ninitrd\t/intel-ucode.img\ninitrd\t/initramfs-linux.img\noptions\troot=UUID=$(blkid -s UUID -o value /dev/nvme0n1p3) rw vt.global_cursor_default=0 nowatchdog ipv6.disable=1 mitigations=off" > "/boot/loader/entries/${TODAY}_linux.conf"'
     
 # Step 4-E: Enable getty service for auto-login
 echo "Creating systemd override for agetty to enable autologin..."
@@ -252,7 +254,7 @@ execute_chroot_command "Change ownership of cloned yay-bin" "chown -R andres:and
 execute_chroot_command "Build and install yay as 'andres'" "sudo -u andres bash -l -c \"cd \\\"\${YAY_CLONE_DIR}\\\" && makepkg -si --noconfirm\""
 
 # Step 6-C: Install AUR Packages with Yay
-echo "Installing AUR packages from pkg_aur.txt..."
+echo "Installing AUR packages with yay..."
 execute_chroot_command "Create necessary dotfile directories" "mkdir -p /home/andres/.config /home/andres/.local/share"
 execute_chroot_command "Restore dotfiles" "sudo -u andres rsync -av --exclude='.git/' --exclude='LICENSE' --exclude='README.md' --exclude='pkg_*' /home/andres/temp_dotfiles_setup/ /home/andres/"
 execute_chroot_command "Set correct ownership of restored dotfiles" "chown -R andres:andres /home/andres"
