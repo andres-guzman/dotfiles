@@ -151,7 +151,7 @@ execute_command "Set console font in live environment" "setfont ter-v16n" "true"
 # Step 2-B: Install the base system and essential packages
 echo -e "${YELLOW}Installing base system with pacstrap (output to /mnt/pacstrap.log)...${NOCOLOR}"
 # IMPORTANT: Added base-devel to ensure build tools like debugedit are present early
-execute_command "Pacstrap base system and base-devel" "pacstrap /mnt base base-devel linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log" "false"
+execute_command "Pacstrap /mnt base system and base-devel" "pacstrap /mnt base base-devel linux-firmware git sudo networkmanager nano efibootmgr 2>&1 | tee /mnt/pacstrap.log" "false"
 
 # Step 2-C: Generate fstab
 execute_command "Generate fstab" "genfstab -U /mnt >> /mnt/etc/fstab" "false"
@@ -462,6 +462,7 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     chown -R andres:andres /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to set ownership for zsh-autosuggestions. Continuing."; }
 
     # fzf is now installed via AUR, so no local cloning/install script needed here.
+    # CRITICAL FIX: Removed the entire local fzf installation block.
     echo "fzf is handled by AUR installation. Skipping local fzf setup."
 
     # Move fonts, themes, systemd user services (ownership should be correct now)
