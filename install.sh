@@ -310,9 +310,32 @@ execute_command "Refresh package databases before official package installation"
 echo -e "${YELLOW}Installing official packages (excluding uwsm) from pkg_official.txt...${NOCOLOR}"
 execute_command "Install official packages (excluding uwsm)" "grep -v '^uwsm$' \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
 
-# --- uwsm is now fully bypassed in this script for automated installation. ---
-# It will be installed manually after reboot.
+# --- Dedicated uwsm installation block ---
+echo -e "${YELLOW}Attempting robust uwsm installation...${NOCOLOR}"
+arch-chroot /mnt /bin/bash << 'EOF_UWSM_INSTALL'
+    set -e
+    set -o pipefail
+    
+    echo "Checking uwsm status before reinstallation attempt..."
+    # Always attempt a full reinstallation with yes | to handle any prompts
+    echo "Attempting clean reinstallation of uwsm with automatic confirmation."
+    if yes | pacman -S uwsm --noconfirm; then
+        echo "SUCCESS: uwsm package reinstalled successfully."
+    else
+        echo "CRITICAL ERROR: Failed to install uwsm even with automatic confirmation. This is a severe issue."
+        exit 1 # Exit on critical uwsm failure
+    fi
 
+    # Final attempt to enable uwsm service
+    echo "Attempting to enable uwsm@andres.service..."
+    if systemctl enable uwsm@andres.service; then
+        echo "SUCCESS: uwsm@andres.service enabled."
+    else
+        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
+        # Not a critical exit here, as the package itself is installed, but a warning
+    fi
+    systemctl daemon-reload # Always reload daemon to ensure systemd picks up new/changed units
+EOF_UWSM_INSTALL
 # ---------------------------------------------------
 
 # Step 6-B: Install AUR Helper (Yay)
@@ -415,20 +438,24 @@ arch-chroot /mnt /bin/bash << EOL_DOTFILES
     echo "Setting correct ownership for /home/andres..."
     chown -R andres:andres /home/andres || { echo "Error: Failed to set ownership of /home/andres."; exit 1; }
 
+    # --- Zsh Plugin Setup ---
+    echo "Setting up Zsh plugins..."
+    mkdir -p /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Error: Failed to create zsh-autosuggestions plugin directory."; }
+    git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions /home/andres/.oh-my-zsh/custom/plugins/zsh-autosuggestions || { echo "Warning: Failed to clone zsh-autosuggestions. Continuing."; }
+    chown -R andres:andres /home/andres/.oh-my-zsh || { echo "Error: Failed to set ownership for .oh-my-zsh. Continuing."; }
+
+    # Move fonts, themes, systemd user services (ownership should be correct now)
     echo "Adjusting dotfile locations if necessary..."
-    # Move fonts
     if [ -d "/home/andres/fonts" ]; then
         mkdir -p /home/andres/.local/share/fonts || { echo "Error: Failed to create fonts directory."; }
         mv /home/andres/fonts/* /home/andres/.local/share/fonts/ 2>/dev/null || { echo "Warning: Failed to move fonts. Continuing."; }
         rmdir /home/andres/fonts 2>/dev/null || true # Ignore error if dir not empty
     fi
-    # Move themes
     if [ -d "/home/andres/themes" ]; then
         mkdir -p /home/andres/.local/share/themes || { echo "Error: Failed to create themes directory."; }
         mv /home/andres/themes/* /home/andres/.local/share/themes/ 2>/dev/null || { echo "Warning: Failed to move themes. Continuing."; }
         rmdir /home/andres/themes 2>/dev/null || true
     fi
-    # Move systemd user services
     if [ -d "/home/andres/systemd" ]; then
         mkdir -p /home/andres/.config/systemd/user || { echo "Error: Failed to create systemd user services directory."; }
         mv /home/andres/systemd/* /home/andres/.config/systemd/user/ 2>/dev/null || { echo "Warning: Failed to move systemd user services. Continuing."; }
@@ -441,11 +468,24 @@ EOL_DOTFILES
 # Step 8: Post-Installation User Configuration and Service Activation
 # ---------------------------------------------------
 echo -e "${CYAN}--- Step 8: Post-Installation User Configuration and Service Activation ---${NOCOLOR}"
-echo -e "${YELLOW}Setting default shell to Zsh...${NOCOLOR}"
+echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOCOLOR}"
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# uwsm service enablement is now part of Step 6-A dedicated block.
+# Explicitly enable uwsm service here, after all dependencies and ownership are settled
+echo -e "${YELLOW}Attempting to enable uwsm@andres.service...${NOCOLOR}"
+arch-chroot /mnt /bin/bash << 'EOF_UWSM_ENABLE'
+    set -e
+    set -o pipefail
+    systemctl daemon-reload # Reload daemon to ensure systemd picks up uwsm@.service
+    if systemctl enable uwsm@andres.service; then
+        echo "SUCCESS: uwsm@andres.service enabled."
+    else
+        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
+        exit 1 # Exit on uwsm service enablement failure
+    fi
+EOF_UWSM_ENABLE
+
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
