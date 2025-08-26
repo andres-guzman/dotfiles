@@ -308,35 +308,13 @@ echo -e "${YELLOW}Installing official packages from pkg_official.txt...${NOCOLOR
 execute_command "Refresh package databases before official package installation" "arch-chroot /mnt pacman -Syyu --noconfirm" "false"
 
 # Filter uwsm from pkg_official.txt temporarily for the main pacman -S
-echo -e "${YELLOW}Installing official packages (excluding uwsm) from pkg_official.txt...${NOCOLOR}"
-execute_command "Install official packages (excluding uwsm)" "grep -v '^uwsm$' \"${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
+# CRITICAL FIX: Ensure uwsm is NOT installed by pacman -S for now, to isolate the issue.
+OFFICIAL_PACKAGES_EXCLUDING_UWSM=$(grep -v '^uwsm$' "${DOTFILES_TEMP_NVME_DIR}/pkg_official.txt")
+execute_command "Install official packages (excluding uwsm)" "echo \"${OFFICIAL_PACKAGES_EXCLUDING_UWSM}\" | arch-chroot /mnt pacman -S --noconfirm -" "false"
 
-# --- Dedicated uwsm installation block ---
-echo -e "${YELLOW}Attempting robust uwsm installation...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << 'EOF_UWSM_INSTALL'
-    set -e
-    set -o pipefail
-    
-    echo "Checking uwsm status before reinstallation attempt..."
-    # Always attempt a full reinstallation with yes | to handle any prompts
-    echo "Attempting clean reinstallation of uwsm with automatic confirmation."
-    if yes | pacman -S uwsm --noconfirm; then
-        echo "SUCCESS: uwsm package reinstalled successfully."
-    else
-        echo "CRITICAL ERROR: Failed to install uwsm even with automatic confirmation. This is a severe issue."
-        exit 1 # Exit on critical uwsm failure
-    fi
+# --- uwsm installation is now entirely skipped by the script for automated installation. ---
+# It will be installed manually after reboot.
 
-    # Final attempt to enable uwsm service
-    echo "Attempting to enable uwsm@andres.service..."
-    if systemctl enable uwsm@andres.service; then
-        echo "SUCCESS: uwsm@andres.service enabled."
-    else
-        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
-        # Not a critical exit here, as the package itself is installed, but a warning
-    fi
-    systemctl daemon-reload # Always reload daemon to ensure systemd picks up new/changed units
-EOF_UWSM_INSTALL
 # ---------------------------------------------------
 
 # Step 6-B: Install AUR Helper (Yay)
@@ -502,20 +480,9 @@ echo -e "${YELLOW}Setting default shell to Zsh and enabling uwsm service...${NOC
 
 execute_command "Set default shell to Zsh for user 'andres'" "arch-chroot /mnt usermod --shell /usr/bin/zsh andres" "false"
 
-# Explicitly enable uwsm service here, after all dependencies and ownership are settled
-echo -e "${YELLOW}Attempting to enable uwsm@andres.service...${NOCOLOR}"
-arch-chroot /mnt /bin/bash << 'EOF_UWSM_ENABLE'
-    set -e
-    set -o pipefail
-    systemctl daemon-reload # Reload daemon to ensure systemd picks up uwsm@.service
-    if systemctl enable uwsm@andres.service; then
-        echo "SUCCESS: uwsm@andres.service enabled."
-    else
-        echo "ERROR: Failed to enable uwsm@andres.service. This might indicate an issue with the service file or systemd."
-        exit 1 # Exit on uwsm service enablement failure
-    fi
-EOF_UWSM_ENABLE
-
+# uwsm will be installed manually later, so disable the automatic service enablement for now.
+echo -e "${YELLOW}Skipping automatic uwsm@andres.service enablement (will be installed manually later).${NOCOLOR}"
+# Removed the uwsm@andres.service enablement block from here.
 
 # ---------------------------------------------------
 # Step 9: Final Clean-up and Reboot
